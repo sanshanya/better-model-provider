@@ -76,7 +76,7 @@ export const STYLES = `
   gap: 8px;
 }
 .bmp-modelId {
-  font-family: var(--dsw-font-mono, monospace);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   word-break: break-all;
 }

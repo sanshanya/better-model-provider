@@ -1,12 +1,16 @@
 # Changelog
 
-Notable changes to better-model-provider. Versions track the published npm
-artifact; the verification matrix each release was held to lives in
-`CONTRIBUTING.md`.
+Notable changes to better-model-provider. Versions track the published git
+tags (npm artifact when it ships); the verification matrix each release was
+held to lives in `CONTRIBUTING.md`.
 
 ## [0.0.1] - 2026-08-15
 
-First public form. Per-model declaration, on your declared routes, of:
+First public form. The repository history was deliberately squashed for
+this rebirth: everything before this tag is a finished conversation, not
+lineage.
+
+Per-model declaration, on your declared routes, of:
 
 - **reasoning-effort levels with wire spellings** — a collapsed multi-select
   picker (click-only open; inline wire edits on checked rows), seeded with
