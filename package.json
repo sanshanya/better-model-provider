@@ -1,0 +1,83 @@
+{
+  "name": "better-model-provider",
+  "version": "0.0.1",
+  "description": "Per-model capability declaration for DeepSeek Harness: reasoning-effort levels (with wire spellings) and request modalities (text/image) for OpenAI-compatible providers — one settings section, no YAML hand-editing.",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "main": "lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "npm run build:lib && npm run build:client",
+    "build:lib": "tsc -p tsconfig.build.json",
+    "build:client": "node scripts/build-client.mjs && tsc -p tsconfig.build-client-types.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint src tests scripts",
+    "prepare": "npm run build",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "test:live": "vitest run tests/integration.live.spec.ts --coverage.enabled=false",
+    "test:functional": "vitest run tests/functional.live.spec.ts --coverage.enabled=false"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^26.2.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitest/coverage-v8": "^4.0.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^27.0.0",
+    "oxlint": "^1.0.0",
+    "puppeteer-core": "^25.7.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": "^20.0.0 || ^22.0.0 || >=24"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.5 || ^0.1.0-rc.6",
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}

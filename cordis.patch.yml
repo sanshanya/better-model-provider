@@ -1,0 +1,7 @@
+# Applied by the profile composer (dsh.bundle.patch) when this package is
+# added to a profile. Mounts the host half (a no-op keepalive row: the plugin
+# is UI-only) so the browser scanner discovers `dsh.client` and serves
+# `lib/client.js` as `/plugins/better-model-provider/client.js`.
+- insert:
+    - id: better-model-provider
+      name: better-model-provider

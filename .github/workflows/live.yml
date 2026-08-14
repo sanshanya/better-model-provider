@@ -1,0 +1,51 @@
+name: live
+
+# The real-boundary lanes: pack the artifact, install it into a throwaway
+# profile next to the published base/web-app bundles, boot a REAL DeepSeek
+# Harness from a fresh checkout, and drive the page in a real browser —
+# integration (module served) and functional (a capability write persists to
+# settings.yaml). Too heavy for the push pipeline, so this lane runs nightly
+# and on manual dispatch; the hermetic `ci` workflow stays the fast gate.
+
+on:
+  schedule:
+    - cron: '17 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BMP_DSH_DIR: ${{ github.workspace }}/dsh
+      # Chrome is preinstalled on the runner; puppeteer-core just needs the path.
+      BMP_CHROME_PATH: /usr/bin/google-chrome-stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The harness is consumed as a source checkout: liveBoot runs the real
+      # CLI through tsx out of it. Its lockfile pins the wire line the plugin
+      # is tested against; a harness regression fails this lane, not a PR.
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          path: dsh
+      - uses: pnpm/action-setup@v4
+        # No version pin: the action reads `packageManager` from the checkout,
+        # exactly like the harness's own CI does.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install
+        working-directory: dsh
+
+      - run: npm run test:live
+      - run: npm run test:functional

@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+lib/
+*.tgz
+.DS_Store
+
+# Local agent scaffolding — measuring tools live on the box, never in the repo.
+scripts/token-survey.mjs
