@@ -23,6 +23,8 @@ jobs:
       BMP_DSH_DIR: ${{ github.workspace }}/dsh
       # Chrome is preinstalled on the runner; puppeteer-core just needs the path.
       BMP_CHROME_PATH: /usr/bin/google-chrome-stable
+      # Preserve the throwaway profile so the failure-diagnose step can read it.
+      BMP_LIVE_KEEP: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,13 +41,28 @@ jobs:
           repository: deepseek-ai/deepseek-harness
           path: dsh
       - uses: pnpm/action-setup@v4
-        # No version pin: the action reads `packageManager` from the checkout,
-        # exactly like the harness's own CI does.
+        with:
+          # The action would otherwise read OUR package.json (no version →
+          # "No pnpm version is specified"); point it at the harness's one,
+          # exactly like the harness's own CI resolves it.
+          package_json_file: dsh/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: pnpm install
         working-directory: dsh
+      # The checkout's loader entries import workspace sources through
+      # node_modules junctions — lib/ exists only after the harness builds
+      # itself (local checkouts quietly carry those artifacts; CI's does not).
+      - run: pnpm build
+        working-directory: dsh
 
       - run: npm run test:live
+      - name: diagnose the reported missing module before cleanup
+        if: failure()
+        run: |
+          for p in /tmp/bmp-live-*/profiles/node_modules/@deepseek-ai/dsh-client-ui-directory-picker-browse; do
+            echo "== $p"; ls -la "$p" | head -5; ls -la "$p/lib" 2>&1 | head -5; readlink -f "$p" || true
+            cat "$p/package.json" | head -30
+          done
       - run: npm run test:functional

@@ -56,7 +56,9 @@ export async function liveBoot(opts: LiveBootOptions = {}): Promise<LiveBoot> {
   let server: ChildProcess | undefined
   const dispose = (): void => {
     server?.kill('SIGTERM')
-    rmSync(work, { recursive: true, force: true })
+    // BMP_LIVE_KEEP preserves the throwaway profile for postmortem (CI
+    // failure diagnostics); callers that want cleanup keep the default.
+    if (process.env['BMP_LIVE_KEEP'] === undefined) rmSync(work, { recursive: true, force: true })
   }
   try {
     execFileSync('npm', ['run', 'build'], { stdio: 'pipe', shell })
@@ -77,6 +79,11 @@ export async function liveBoot(opts: LiveBootOptions = {}): Promise<LiveBoot> {
       },
       dependencies: {
         'better-model-provider': `link:${pluginDir}`,
+        // Bundles ride the published rc line — exactly how `dsh plugin add`
+        // resolves them for a real user; workspace links into the checkout
+        // leave transitively-installed client packages without built libs.
+        '@deepseek-ai/dsh-base': '0.1.0-rc.6',
+        '@deepseek-ai/dsh-web-app': '0.1.0-rc.6',
       },
     }, null, 1))
     execFileSync('pnpm', ['install', '--ignore-scripts'], { cwd: profileDir, stdio: 'pipe', shell })

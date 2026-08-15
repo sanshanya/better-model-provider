@@ -99,9 +99,28 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
 
   /** Put the reasoning editor into custom mode and open its level picker. */
   async function openReasoningPicker(): Promise<void> {
-    await setCapabilityCustom(['reasoning', '推理强度'])
-    await clickWithText('button', ['已选择', 'selected'])
-    await page.waitForSelector('.bmp-msItem input[type="checkbox"]')
+    await setCapabilityCustom(['reasoning', 'Reasoning', '推理强度'])
+    // Boot-time document-updated invalidations re-render the row after our
+    // click, killing the toggled node on a detached button — retry the
+    // toggle bounded instead of trusting one click.
+    const wrap = await page
+      .waitForSelector('.bmp-msWrap button[aria-haspopup="true"]', { visible: true })
+      .catch(async () => {
+        const dump = await page.evaluate(() =>
+          [...document.querySelectorAll('button, select')]
+            .map(el => `${el.tagName}[${String(el.className).split(' ')[0]}] ${(el.textContent ?? '').trim().slice(0, 24)} ~${el.getAttribute('aria-label') ?? ''}`)
+            .slice(0, 50)
+            .join('\n'))
+        throw new Error(`picker button never appeared; page buttons/selects:\n${dump}`)
+      })
+    expect(wrap).toBeDefined()
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await clickWithText('.bmp-msWrap button', ['已选择', 'selected'])
+      const open = await page.waitForSelector('.bmp-msItem input[type="checkbox"]', { timeout: 3_000 })
+        .catch(() => null)
+      if (open !== null) return
+    }
+    throw new Error('reasoning picker never opened its panel after 4 toggles')
   }
 
   /** Type into one capacity field (by aria-label) of the expanded row. */
