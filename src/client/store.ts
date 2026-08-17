@@ -340,26 +340,32 @@ export class CapabilitiesController {
    * no-op that still keeps the UI draft intact.
    */
   async commit(build: (namespace: SettingsNamespaceView) => SettingsPathOpView[]): Promise<boolean> {
-    try {
-      const wrote = await this.enqueueMutation(async (): Promise<boolean> => {
-        const namespace = this.prepareMutation()
-        const ops = build(namespace)
+    return this.enqueueMutation(async (): Promise<boolean> => {
+      try {
+        if (this.disposed) throw new Error('better-model-provider: controller disposed')
+        const current = this.store.getSnapshot().namespace
+        if (current === undefined) throw new Error('better-model-provider: settings namespace unavailable')
+        const ops = build(current)
+        // No-op commits do not establish a mutation fence: they abort no
+        // refresh and trigger no reload.
         if (ops.length === 0) return false
+        // Only a real write fences stale reads and owns the CAS baseline.
+        const namespace = this.prepareMutation()
         const next = unwrap(await this.api.settings.mutate({
           ns: PI_AI_NS,
           ops,
           expectedRevision: namespace.revision,
         }))
         this.store.setSnapshot({ ...this.store.getSnapshot(), namespace: next })
+        await this.reload()
         return true
-      })
-      if (wrote) await this.reload()
-      return wrote
-    } catch (caught) {
-      // Keep sibling surfaces re-anchored on any failure path.
-      await this.reload()
-      throw caught
-    }
+      } catch (caught) {
+        // Recovery is part of the serialized transaction: the next queued
+        // commit must build from the refreshed namespace, not the stale one.
+        await this.reload()
+        throw caught
+      }
+    })
   }
 
   /** Serialize one mutation step after any prior queued mutation. */
@@ -371,16 +377,12 @@ export class CapabilitiesController {
 
   /** Fence stale reads and return the authoritative mutation namespace. */
   private prepareMutation(): SettingsNamespaceView {
-    if (this.disposed) throw new Error('better-model-provider: controller disposed')
-    // The read that started before this write may still carry the old revision.
-    // Fence it before sending the mutation so its stale response cannot roll
-    // the authoritative post-write CAS baseline backwards.
+    // commit() has already validated liveness and the namespace before it
+    // reaches here; this step only fences reads that started before the write.
     this.generation += 1
     this.activeAbort?.abort()
     this.activeAbort = undefined
-    const snapshot = this.store.getSnapshot()
-    if (snapshot.namespace === undefined) throw new Error('better-model-provider: settings namespace unavailable')
-    return snapshot.namespace
+    return this.store.getSnapshot().namespace as SettingsNamespaceView
   }
 
   /** Reload after a mutation lands (or any forwarded invalidation). */
