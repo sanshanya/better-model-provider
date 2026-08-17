@@ -6,8 +6,8 @@
 
 import { describe, expect, test } from 'vitest'
 import {
-  CapabilitiesController, createSnapshotStore, inputModalityChoices, messageOf, profileModels,
-  reasoningLevelChoices, validInputModalities, validReasoningEfforts,
+  CapabilitiesController, createSnapshotStore, extractCapabilityVocabulary, messageOf, profileModels,
+  validInputModalities, validReasoningEfforts,
 } from '../src/client/store.ts'
 import type { SettingsNamespaceView } from '../src/client/types.ts'
 import { assertEmptyPayload, defaultArrangement, envelopeError, envelopeOk, modelsEnvelope, piAiNamespace, scriptedFace } from './helpers.ts'
@@ -16,11 +16,11 @@ describe('vocabulary from the serialized schema', () => {
   const ns = piAiNamespace(defaultArrangement())
 
   test('reasoning levels follow the schema order', () => {
-    expect(reasoningLevelChoices(ns)).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(extractCapabilityVocabulary(ns).levels).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
   })
 
   test('input modalities follow the schema order', () => {
-    expect(inputModalityChoices(ns)).toEqual(['text', 'image'])
+    expect(extractCapabilityVocabulary(ns).modalities).toEqual(['text', 'image'])
   })
 
   const bareNs = (schema: unknown): SettingsNamespaceView =>
@@ -34,14 +34,14 @@ describe('vocabulary from the serialized schema', () => {
     ['schema not an object', bareNs('not-an-envelope'), []],
     ['malformed envelope rehydrate throws', bareNs(null), []],
   ])('%s yields an empty vocabulary', (_label, namespace, expected) => {
-    expect(reasoningLevelChoices(namespace as SettingsNamespaceView)).toEqual(expected)
-    expect(inputModalityChoices(namespace as SettingsNamespaceView)).toEqual(expected)
+    expect(extractCapabilityVocabulary(namespace as SettingsNamespaceView).levels).toEqual(expected)
+    expect(extractCapabilityVocabulary(namespace as SettingsNamespaceView).modalities).toEqual(expected)
   })
 
   test('a models item without the fields yields nothing', () => {
     const bare = bareNs(modelsEnvelope({ type: 'array', inner: { type: 'object', dict: { id: { type: 'string' } } } }))
-    expect(reasoningLevelChoices(bare)).toEqual([])
-    expect(inputModalityChoices(bare)).toEqual([])
+    expect(extractCapabilityVocabulary(bare).levels).toEqual([])
+    expect(extractCapabilityVocabulary(bare).modalities).toEqual([])
   })
 
   test('a dict key union without a list or with non-strings yields only strings', () => {
@@ -58,8 +58,8 @@ describe('vocabulary from the serialized schema', () => {
         },
       },
     }))
-    expect(reasoningLevelChoices(shaped)).toEqual(['good'])
-    expect(inputModalityChoices(shaped)).toEqual([])
+    expect(extractCapabilityVocabulary(shaped).levels).toEqual(['good'])
+    expect(extractCapabilityVocabulary(shaped).modalities).toEqual([])
 
     const keyless = bareNs(modelsEnvelope({
       type: 'array',
@@ -73,7 +73,7 @@ describe('vocabulary from the serialized schema', () => {
         },
       },
     }))
-    expect(reasoningLevelChoices(keyless)).toEqual([])
+    expect(extractCapabilityVocabulary(keyless).levels).toEqual([])
   })
 
   test('a reasoningEfforts schema without the dict member yields nothing', () => {
@@ -81,8 +81,8 @@ describe('vocabulary from the serialized schema', () => {
       type: 'array',
       inner: { type: 'object', dict: { reasoningEfforts: { type: 'boolean' }, input: { type: 'array', inner: { type: 'string' } } } },
     }))
-    expect(reasoningLevelChoices(without)).toEqual([])
-    expect(inputModalityChoices(without)).toEqual([])
+    expect(extractCapabilityVocabulary(without).levels).toEqual([])
+    expect(extractCapabilityVocabulary(without).modalities).toEqual([])
   })
 })
 
@@ -185,7 +185,7 @@ describe('controller join', () => {
     expect(snapshot.rows[0]?.models).toEqual([{ id: 'Kimi-K3', name: 'Kimi' }])
     expect(snapshot.levels).toHaveLength(7)
     expect(snapshot.modalities).toEqual(['text', 'image'])
-    await controller.mutate([{ op: 'set', path: ['providers', 'x'], value: {} }])
+    await controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])
   })
 
   test('missing namespace leaves rows joined from an empty profile', async () => {
@@ -219,7 +219,7 @@ describe('controller join', () => {
     const arrange = defaultArrangement()
     const { api } = scriptedFace(arrange)
     const controller = new CapabilitiesController(api)
-    await expect(controller.mutate([])).rejects.toThrow('namespace unavailable')
+    await expect(controller.commit(() => [])).rejects.toThrow('namespace unavailable')
   })
 
   test('setting the identical snapshot publishes nothing', () => {
@@ -261,7 +261,7 @@ describe('controller join', () => {
     api.settings.mutate = () => Promise.resolve(envelopeError('settings-conflict', 'moved on'))
     const controller = new CapabilitiesController(api)
     await controller.load()
-    await expect(controller.mutate([])).rejects.toMatchObject({ code: 'settings-conflict', name: 'HarnessRpcError' })
+    await expect(controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])).rejects.toMatchObject({ code: 'settings-conflict', name: 'HarnessRpcError' })
   })
 
   test('business failures on mutate throw the error message', async () => {
@@ -270,7 +270,7 @@ describe('controller join', () => {
     const controller = new CapabilitiesController(api)
     await controller.load()
     api.settings.mutate = () => Promise.resolve(envelopeError('settings-conflict', 'revision moved'))
-    await expect(controller.mutate([])).rejects.toThrow('revision moved')
+    await expect(controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])).rejects.toThrow('revision moved')
   })
 
   test('a mutation fences an in-flight refresh before advancing the CAS baseline', async () => {
@@ -282,15 +282,17 @@ describe('controller join', () => {
     const originalDescribe = api.settings.describe
     let release!: (value: Awaited<ReturnType<typeof originalDescribe>>) => void
     const slow = new Promise<Awaited<ReturnType<typeof originalDescribe>>>(resolve => { release = resolve })
+    let describeCalls = 0
     api.settings.describe = payload => {
+      describeCalls += 1
       assertEmptyPayload('settings.describe', payload)
-      return slow
+      return describeCalls === 1 ? slow : originalDescribe(payload)
     }
     const staleNamespace = piAiNamespace(arrange)
     const refresh = controller.reload()
     await Promise.resolve()
 
-    await controller.mutate([{
+    await controller.commit(() => [{
       op: 'set',
       path: ['providers', 'ksyun', 'models'],
       value: [{ id: 'Kimi-K3', reasoningEfforts: false }],
@@ -357,7 +359,7 @@ describe('controller join', () => {
     await controller.load()
     // Commit once: the server view lands with revision 2 and must become the
     // new baseline immediately.
-    await controller.mutate([{ op: 'set', path: ['providers', 'ksyun'], value: {} }])
+    await controller.commit(() => [{ op: 'set', path: ['providers', 'ksyun'], value: {} }])
     expect(mutates[0]?.expectedRevision).toBe(1)
     // Now the background refresh fails: the revision must still have advanced.
     api.settings.describe = payload => {
@@ -367,7 +369,7 @@ describe('controller join', () => {
     await controller.reload()
     expect(controller.store.getSnapshot().namespace?.revision).toBe(2)
     // The next write CASes against the committed revision, not the pre-write one.
-    await controller.mutate([{ op: 'set', path: ['providers', 'ksyun'], value: {} }])
+    await controller.commit(() => [{ op: 'set', path: ['providers', 'ksyun'], value: {} }])
     expect(mutates[1]?.expectedRevision).toBe(2)
   })
 
@@ -435,7 +437,7 @@ describe('controller join', () => {
     await pending
     expect(controller.store.getSnapshot().status).toBe('loading')
     expect(controller.store.getSnapshot().rows).toEqual([])
-    await expect(controller.mutate([])).rejects.toThrow('controller disposed')
+    await expect(controller.commit(() => [])).rejects.toThrow('controller disposed')
     await expect(controller.load()).resolves.toBeUndefined()
   })
 
@@ -447,5 +449,44 @@ describe('controller join', () => {
     arrange.providers = []
     await controller.reload()
     expect(controller.store.getSnapshot().rows).toEqual([])
+  })
+
+  test('commit returns false for empty ops without writing or reloading', async () => {
+    const arrange = defaultArrangement()
+    const { api, mutates } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    await controller.load()
+
+    let describes = 0
+    const before = api.settings.describe
+    api.settings.describe = payload => {
+      describes += 1
+      return before(payload)
+    }
+    await expect(controller.commit(() => [])).resolves.toBe(false)
+    expect(mutates).toEqual([])
+    expect(describes).toBe(0)
+  })
+
+  test('commit writes, updates the baseline, and reloads', async () => {
+    const arrange = defaultArrangement()
+    const { api, mutates } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    await controller.load()
+
+    let describes = 0
+    const before = api.settings.describe
+    api.settings.describe = payload => {
+      describes += 1
+      return before(payload)
+    }
+    await expect(controller.commit(() => [{
+      op: 'set',
+      path: ['providers', 'x'],
+      value: { committed: true },
+    }])).resolves.toBe(true)
+    expect(mutates).toHaveLength(1)
+    expect(mutates[0]?.expectedRevision).toBe(1)
+    expect(describes).toBe(1)
   })
 })
