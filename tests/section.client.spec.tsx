@@ -162,7 +162,27 @@ describe('declared-route capability editing', () => {
     expect(inputSelect().value).toBe('')
   })
 
-  test('revert discards the staged state', async () => {
+  test('selecting inherit from custom input clears all modalities', async () => {
+      await mount()
+      await expandFirstModel()
+      fireEvent.change(inputSelect(), { target: { value: 'custom' } })
+      expect(inputSelect().value).toBe('custom')
+      fireEvent.change(inputSelect(), { target: { value: '' } })
+      expect(inputSelect().value).toBe('')
+    })
+
+    test('a stored non-string wire renders as an empty wire field', async () => {
+      const arrange = defaultArrangement()
+      arrange.user = { providers: { ksyun: { models: [{ id: 'Kimi-K3', name: 'Kimi', reasoningEfforts: { minimal: 123 } }] } } }
+      arrange.value = arrange.user
+      await mount(arrange)
+      await expandFirstModel()
+      fireEvent.click(screen.getByRole('button', { name: /selected/ }))
+      const wire = getByLabelText(document.body, 'minimal wire') as HTMLInputElement
+      expect(wire.value).toBe('')
+    })
+
+    test('revert discards the staged state', async () => {
     await mount()
     await expandFirstModel()
     fireEvent.change(reasoningSelect(), { target: { value: 'off' } })
@@ -201,8 +221,10 @@ describe('declared-route capability editing', () => {
     expect(document.querySelector('.bmp-msPanel')).not.toBeNull()
     fireEvent.mouseDown(document.body)
     expect(document.querySelector('.bmp-msPanel')).toBeNull()
-    // Reopen once more: Escape dismisses.
+    // Reopen once more: non-Escape keys do not dismiss, Escape does.
     fireEvent.click(picker)
+    expect(document.querySelector('.bmp-msPanel')).not.toBeNull()
+    fireEvent.keyDown(document.body, { key: 'Enter' })
     expect(document.querySelector('.bmp-msPanel')).not.toBeNull()
     fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(document.querySelector('.bmp-msPanel')).toBeNull()
@@ -233,7 +255,17 @@ describe('declared-route capability editing', () => {
     expect(screen.queryByRole('alert')?.textContent).toBe('nope')
   })
 
-  test('an input-only edit does not unset reasoning or copy other fields', async () => {
+  test('a no-op commit keeps the staged draft visible', async () => {
+      const { controller } = await mount()
+      controller.commit = async () => false
+      await expandFirstModel()
+      fireEvent.change(reasoningSelect(), { target: { value: 'off' } })
+      await waitFor(() => expect(screen.queryByText(en.staged)).not.toBeNull())
+      fireEvent.click(screen.getByRole('button', { name: en.apply }))
+      await waitFor(() => expect(screen.queryByText(en.staged)).not.toBeNull())
+    })
+
+    test('an input-only edit does not unset reasoning or copy other fields', async () => {
     const { mutates } = await mount()
     await expandFirstModel()
     fireEvent.change(inputSelect(), { target: { value: 'custom' } })
