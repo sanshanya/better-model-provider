@@ -489,4 +489,54 @@ describe('controller join', () => {
     expect(mutates[0]?.expectedRevision).toBe(1)
     expect(describes).toBe(1)
   })
+
+  test('concurrent commits serialize success: the second builder sees the first accepted namespace', async () => {
+    const arrange = defaultArrangement()
+    const { api, mutates } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    await controller.load()
+
+    const seen: number[] = []
+    const first = controller.commit(() => {
+      seen.push(controller.store.getSnapshot().namespace?.revision ?? 0)
+      return [{ op: 'set', path: ['providers', 'first'], value: {} }]
+    })
+    const second = controller.commit(() => {
+      seen.push(controller.store.getSnapshot().namespace?.revision ?? 0)
+      return [{ op: 'set', path: ['providers', 'second'], value: {} }]
+    })
+    await Promise.all([first, second])
+
+    expect(seen).toEqual([1, 2])
+    expect(mutates).toHaveLength(2)
+    expect(mutates[0]?.expectedRevision).toBe(1)
+    expect(mutates[1]?.expectedRevision).toBe(2)
+  })
+
+  test('concurrent commits serialize recovery: the second builder sees the post-reload namespace', async () => {
+    const arrange = defaultArrangement()
+    const { api, mutates } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    await controller.load()
+
+    // Simulate an external revision advancing between the request load and A.
+    arrange.revision = 2
+    const seen: number[] = []
+    const first = controller.commit(() => {
+      seen.push(controller.store.getSnapshot().namespace?.revision ?? 0)
+      return [{ op: 'set', path: ['providers', 'first'], value: {} }]
+    })
+    const second = controller.commit(() => {
+      seen.push(controller.store.getSnapshot().namespace?.revision ?? 0)
+      return [{ op: 'set', path: ['providers', 'second'], value: {} }]
+    })
+
+    await expect(first).rejects.toMatchObject({ code: 'settings-conflict', name: 'HarnessRpcError' })
+    await expect(second).resolves.toBe(true)
+
+    expect(seen).toEqual([1, 2])
+    expect(mutates).toHaveLength(2)
+    expect(mutates[0]?.expectedRevision).toBe(1)
+    expect(mutates[1]?.expectedRevision).toBe(2)
+  })
 })
