@@ -14,9 +14,9 @@ import type {
   CapabilitiesController, CapabilitiesState, CapabilityRowView, ReasoningEffortsValue,
 } from './store.ts'
 import { messageOf, validInputModalities, validReasoningEfforts } from './store.ts'
-import type { CapabilityPatch, CapabilityState } from './writes.ts'
-import { declaredEditOps, stagedDiffers } from './writes.ts'
-import { CAPACITY_HINT, formatCapacity, parseCapacity, validCapacity } from './capacity.ts'
+import type { CapabilityPatch } from './writes.ts'
+import { declaredEditOps, patchOf, RowDraft, rowStateOf, stagedDiffers } from './writes.ts'
+import { CAPACITY_HINT, formatCapacity, validCapacity } from './capacity.ts'
 import { HarnessRpcError } from './types.ts'
 import type { CapsKey } from './locales.ts'
 
@@ -318,57 +318,6 @@ function CapacityEditor(props: {
 /* Model row                                                           */
 /* ================================================================== */
 
-/** Staged partial state of one row: null means untouched. */
-interface RowDraft {
-  /** The row edited reasoning (`undefined` staged means "inherit"). */
-  reasoningTouched: boolean
-  /** Staged reasoning-effort declaration. */
-  reasoning?: ReasoningEffortsValue | undefined
-  /** The row edited input (`undefined` staged means "inherit"). */
-  inputTouched: boolean
-  /** Staged input modalities. */
-  input?: readonly unknown[] | undefined
-  /** The row edited either capacity field (blank text means "inherit"). */
-  capacityTouched: boolean
-  /** Staged `contextWindow` text (K/M spellings; parsed on use). */
-  contextWindowText: string
-  /** Staged `maxTokens` text (K/M spellings; parsed on use). */
-  maxTokensText: string
-}
-
-/** Build the row's whole state: stored entry overlaid with the draft. */
-function rowStateOf(entry: Record<string, unknown>, draft: RowDraft | null): CapabilityState {
-  return {
-    reasoning: draft?.reasoningTouched === true
-      ? draft.reasoning
-      : entry['reasoningEfforts'] as ReasoningEffortsValue,
-    input: draft?.inputTouched === true
-      ? draft.input
-      : entry['input'] as readonly unknown[] | undefined,
-    // Capacities stage as text (a half-typed "38" is a draft too) and parse at
-    // the leaf: an unreadable spelling parses to NaN, differs from anything
-    // stored, and is refused by the apply-time validation below.
-    contextWindow: draft?.capacityTouched === true
-      ? parseCapacity(draft.contextWindowText)
-      : entry['contextWindow'] as number | undefined,
-    maxTokens: draft?.capacityTouched === true
-      ? parseCapacity(draft.maxTokensText)
-      : entry['maxTokens'] as number | undefined,
-  }
-}
-
-/** Convert the row's touched flags into a patch that preserves inheritance. */
-function patchOf(state: CapabilityState, draft: RowDraft): CapabilityPatch {
-  const patch: CapabilityPatch = {}
-  if (draft.reasoningTouched) patch.reasoning = { value: state.reasoning }
-  if (draft.inputTouched) patch.input = { value: state.input }
-  if (draft.capacityTouched) {
-    patch.contextWindow = { value: state.contextWindow }
-    patch.maxTokens = { value: state.maxTokens }
-  }
-  return patch
-}
-
 /** One model row: header, disclosure with both editors, and its save traffic. */
 function ModelRow(props: {
   /** The stored entry the stage overlays (`{}` without declaration). */
@@ -385,14 +334,12 @@ function ModelRow(props: {
   levels: readonly string[]
   /** Schema-derived request modalities, or none. */
   modalities: readonly string[]
-  /** Apply traffic from the card: stage → write + reload. */
-  applyRow: (index: number, patch: CapabilityPatch) => Promise<void>
-  /** Reload authoritative state (also invoked by this row after a rejected write). */
-  controllerReload: () => Promise<void>
+  /** Apply traffic from the row: stage → commit; reload stays in commit. */
+  applyRow: (index: number, patch: CapabilityPatch) => Promise<boolean>
   /** Bound translate. */
   t: TFn
 }): ReactElement {
-  const { entry, modelId, displayName, index, writable, levels, modalities, applyRow, controllerReload, t } = props
+  const { entry, modelId, displayName, index, writable, levels, modalities, applyRow, t } = props
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<RowDraft | null>(null)
   const [busy, setBusy] = useState(false)
@@ -427,14 +374,11 @@ function ModelRow(props: {
     try {
       // The action is rendered only while a draft exists; keeping this path
       // total avoids a second async state machine for an impossible event.
-      await applyRow(index, patchOf(state, draft!))
-      setDraft(null)
+      const wrote = await applyRow(index, patchOf(state, draft!))
+      if (wrote) setDraft(null)
     } catch (caught: unknown) {
       setError(writeErrorText(caught, t))
-      // A failed write (incl. settings-conflict) keeps the draft here but
-      // re-anchors every sibling surface on the newest accepted state.
-      // reload() never rejects: runLoad() digests its own failures.
-      void controllerReload()
+      // commit() already reloads on failure to re-anchor every sibling surface.
     } finally {
       setBusy(false)
     }
@@ -539,8 +483,6 @@ function ModelRow(props: {
 function ProviderCard(props: {
   /** Joined row: route facts + profile models. */
   row: CapabilityRowView
-  /** The loaded namespace rows were joined from (rows render iff it exists). */
-  namespace: import('./types.ts').SettingsNamespaceView
   /** The page controller. */
   controller: CapabilitiesController
   /** Schema vocabularies. */
@@ -552,15 +494,15 @@ function ProviderCard(props: {
   /** Bound translate. */
   t: TFn
 }): ReactElement {
-  const { row, namespace, controller, levels, modalities, writable, t } = props
+  const { row, controller, levels, modalities, writable, t } = props
   const applyRow = useCallback(async (
     index: number,
     patch: CapabilityPatch,
-  ): Promise<void> => {
-    await controller.mutate(declaredEditOps(namespace, row.entry.settingsPath, index, patch))
-    await controller.reload()
-  }, [controller, namespace, row.entry.settingsPath])
-  const controllerReload = useCallback(() => controller.reload(), [controller])
+  ): Promise<boolean> => {
+    // commit() builds from the same authoritative snapshot that supplies
+    // expectedRevision, writes, and owns the success/failure reload.
+    return controller.commit(snapshot => declaredEditOps(snapshot, row.entry.settingsPath, index, patch))
+  }, [controller, row.entry.settingsPath])
   const rowWritable = writable && (row.entry.declared !== true || row.declaredEditable)
   return (
     <section className="bmp-card">
@@ -588,7 +530,7 @@ function ProviderCard(props: {
               levels={levels}
               modalities={modalities}
               applyRow={applyRow}
-              controllerReload={controllerReload}
+              
               t={t}
             />
           )
@@ -640,7 +582,6 @@ export function CapabilitiesSection(props: CapabilitiesSectionProps): ReactEleme
         <ProviderCard
           key={row.entry.provider}
           row={row}
-          namespace={namespace}
           controller={controller}
           levels={snapshot.levels}
           modalities={snapshot.modalities}

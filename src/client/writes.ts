@@ -9,7 +9,9 @@
  */
 
 import type { SettingsNamespaceView, SettingsPathOpView } from './types.ts'
-import { profileModels } from './store.ts'
+import { profileModels, userOwnsModels } from './store.ts'
+import type { ReasoningEffortsValue } from './store.ts'
+import { parseCapacity } from './capacity.ts'
 
 /** The full staged capability state of one model row. */
 export interface CapabilityState {
@@ -31,8 +33,56 @@ export interface CapabilityPatch {
   maxTokens?: { value: CapabilityState['maxTokens'] }
 }
 
+/** Staged partial state of one row: null means untouched. */
+export interface RowDraft {
+  /** The row edited reasoning (`undefined` staged means "inherit"). */
+  reasoningTouched: boolean
+  /** Staged reasoning-effort declaration. */
+  reasoning?: ReasoningEffortsValue | undefined
+  /** The row edited input (`undefined` staged means "inherit"). */
+  inputTouched: boolean
+  /** Staged input modalities. */
+  input?: readonly unknown[] | undefined
+  /** The row edited either capacity field (blank text means "inherit"). */
+  capacityTouched: boolean
+  /** Staged `contextWindow` text (K/M spellings; parsed on use). */
+  contextWindowText: string
+  /** Staged `maxTokens` text (K/M spellings; parsed on use). */
+  maxTokensText: string
+}
+
+/** Build the row's whole state: stored entry overlaid with the draft. */
+export function rowStateOf(entry: Record<string, unknown>, draft: RowDraft | null): CapabilityState {
+  return {
+    reasoning: draft?.reasoningTouched === true
+      ? draft.reasoning
+      : entry['reasoningEfforts'] as ReasoningEffortsValue,
+    input: draft?.inputTouched === true
+      ? draft.input
+      : entry['input'] as readonly unknown[] | undefined,
+    contextWindow: draft?.capacityTouched === true
+      ? parseCapacity(draft.contextWindowText)
+      : entry['contextWindow'] as number | undefined,
+    maxTokens: draft?.capacityTouched === true
+      ? parseCapacity(draft.maxTokensText)
+      : entry['maxTokens'] as number | undefined,
+  }
+}
+
+/** Convert the row's touched flags into a patch that preserves inheritance. */
+export function patchOf(state: CapabilityState, draft: RowDraft): CapabilityPatch {
+  const patch: CapabilityPatch = {}
+  if (draft.reasoningTouched) patch.reasoning = { value: state.reasoning }
+  if (draft.inputTouched) patch.input = { value: state.input }
+  if (draft.capacityTouched) {
+    patch.contextWindow = { value: state.contextWindow }
+    patch.maxTokens = { value: state.maxTokens }
+  }
+  return patch
+}
+
 /**
- * Whether the staged state differs from what the entry stores today, so a
+ * Whether the staged state differs from what a row stores today, so a
  * row with no real change writes nothing.
  */
 export function stagedDiffers(entry: Record<string, unknown>, state: CapabilityState): boolean {
@@ -85,7 +135,7 @@ export function declaredEditOps(
   patch: CapabilityPatch,
 ): SettingsPathOpView[] {
   const models = profileModels(namespace, path, 'user')
-  if (index < 0 || index >= models.length) return []
+  if (!userOwnsModels(namespace, path) || index < 0 || index >= models.length) return []
   const nextModels = models.map((entry, i) => (i === index ? applyPatch(entry, patch) : { ...entry }))
   return [{ op: 'set', path: [...path, 'models'], value: nextModels }]
 }

@@ -55,47 +55,46 @@ export function messageOf(error: unknown): string {
 }
 
 /**
- * The reasoning-effort levels a model entry may declare, read out of the
- * owning namespace's own serialized schema so the page's vocabulary cannot
- * drift from the adapter's: the `models` item's `reasoningEfforts` field is
- * a union of `false` and a dict whose key union lists the levels (empty
- * list when the schema declares none).
+ * Extract both capability vocabularies from one rehydrated schema walk.
+ *
+ * The reasoning and input vocabularies are not two independent parsing paths:
+ * they both begin at the same `models` entry node inside the owning namespace.
+ * Extracting them together keeps one conceptual schema-to-vocabulary operation
+ * and avoids rehydrating/parsing the schema twice per load.
  */
-export function reasoningLevelChoices(namespace: SettingsNamespaceView | undefined): string[] {
-  if (namespace === undefined) return []
+export function extractCapabilityVocabulary(
+  namespace: SettingsNamespaceView | undefined,
+): { levels: string[]; modalities: string[] } {
+  const empty: { levels: string[]; modalities: string[] } = { levels: [], modalities: [] }
+  if (namespace === undefined) return empty
   const models = nodeAtPath(rehydrateSchema(namespace.schema), ['providers', PROBE_ROUTE, 'models']) as
     | { type?: string; inner?: unknown }
     | undefined
-  if (models?.type !== 'array' || models.inner === undefined) return []
+  if (models?.type !== 'array' || models.inner === undefined) return empty
   const entry = models.inner as { type?: string; dict?: Record<string, unknown> } | undefined
-  if (entry?.type !== 'object' || entry.dict === undefined) return []
-  const efforts = entry.dict['reasoningEfforts'] as { type?: string; list?: readonly unknown[] } | undefined
-  if (efforts?.type !== 'union' || efforts.list === undefined) return []
-  const dict = efforts.list.find(member => (member as { type?: string }).type === 'dict') as
-    | { sKey?: { type?: string; list?: readonly { value?: unknown }[] } }
-    | undefined
-  if (dict?.sKey?.type !== 'union' || dict.sKey.list === undefined) return []
-  return dict.sKey.list.map(member => member.value).filter((value): value is string => typeof value === 'string')
-}
+  if (entry?.type !== 'object' || entry.dict === undefined) return empty
 
-/**
- * The request modalities a model entry may declare, read out of the same
- * schema: the `models` item's `input` field is an array of a const union
- * (empty list when the schema declares none).
- */
-export function inputModalityChoices(namespace: SettingsNamespaceView | undefined): string[] {
-  if (namespace === undefined) return []
-  const models = nodeAtPath(rehydrateSchema(namespace.schema), ['providers', PROBE_ROUTE, 'models']) as
-    | { type?: string; inner?: unknown }
-    | undefined
-  if (models?.type !== 'array' || models.inner === undefined) return []
-  const entry = models.inner as { type?: string; dict?: Record<string, unknown> } | undefined
-  if (entry?.type !== 'object' || entry.dict === undefined) return []
+  const levels: string[] = []
+  const efforts = entry.dict['reasoningEfforts'] as { type?: string; list?: readonly unknown[] } | undefined
+  if (efforts?.type === 'union' && efforts.list !== undefined) {
+    const dict = efforts.list.find(member => (member as { type?: string }).type === 'dict') as
+      | { sKey?: { type?: string; list?: readonly { value?: unknown }[] } }
+      | undefined
+    if (dict?.sKey?.type === 'union' && dict.sKey.list !== undefined) {
+      levels.push(...dict.sKey.list.map(member => member.value).filter((value): value is string => typeof value === 'string'))
+    }
+  }
+
+  const modalities: string[] = []
   const input = entry.dict['input'] as { type?: string; inner?: unknown } | undefined
-  if (input?.type !== 'array' || input.inner === undefined) return []
-  const union = input.inner as { type?: string; list?: readonly { value?: unknown }[] } | undefined
-  if (union?.type !== 'union' || union.list === undefined) return []
-  return union.list.map(member => member.value).filter((value): value is string => typeof value === 'string')
+  if (input?.type === 'array' && input.inner !== undefined) {
+    const union = input.inner as { type?: string; list?: readonly { value?: unknown }[] } | undefined
+    if (union?.type === 'union' && union.list !== undefined) {
+      modalities.push(...union.list.map(member => member.value).filter((value): value is string => typeof value === 'string'))
+    }
+  }
+
+  return { levels, modalities }
 }
 
 /**
@@ -162,6 +161,14 @@ export function profileModels(
     typeof entry === 'object' && entry !== null && !Array.isArray(entry)
       ? entry as Record<string, unknown>
       : {})
+}
+
+/** Whether a declared route owns its `models` array in the user layer. */
+export function userOwnsModels(
+  namespace: SettingsNamespaceView,
+  path: readonly string[],
+): boolean {
+  return hasPath(namespace.user ?? {}, [...path, 'models'])
 }
 
 /** One row of the capabilities page. */
@@ -242,6 +249,8 @@ export class CapabilitiesController {
   private activeAbort: AbortController | undefined
   /** Prevent a disposed plugin fiber from receiving a late response. */
   private disposed = false
+  /** Serialize mutations so each write builds from the latest accepted namespace. */
+  private mutationTail: Promise<void> = Promise.resolve()
 
   /** Stop in-flight reads and make every later response a no-op. */
   dispose(): void {
@@ -298,7 +307,7 @@ export class CapabilitiesController {
           configured: namespace !== undefined && hasPath(namespace.value ?? {}, entry.settingsPath),
           declaredEditable: namespace !== undefined
             && entry.declared === true
-            && hasPath(namespace.user ?? {}, [...entry.settingsPath, 'models']),
+            && userOwnsModels(namespace, entry.settingsPath),
           models: namespace === undefined ? [] : profileModels(namespace, entry.settingsPath),
         }))
       this.store.setSnapshot({
@@ -307,8 +316,8 @@ export class CapabilitiesController {
         writable: settings.writable,
         namespace,
         rows: joined.filter(row => row.configured && row.entry.declared !== false),
-        levels: reasoningLevelChoices(namespace),
-        modalities: inputModalityChoices(namespace),
+        ...extractCapabilityVocabulary(namespace),
+        
       })
     } catch (error: unknown) {
       if (!this.isCurrent(generation)) return
@@ -322,29 +331,56 @@ export class CapabilitiesController {
   }
 
   /**
-   * Apply a profile write; business failures surface as thrown errors. The
-   * SERVER-ACCEPTED namespace replaces the local one immediately: its
-   * revision is the only correct CAS baseline for the next write — a
-   * background-refresh failure after a commit must never strand us on the
-   * pre-write revision (that manufactures a spurious `settings-conflict`).
+   * Build and apply a profile write from one atomic snapshot, then reload.
+   *
+   * The op builder receives the exact namespace that also supplies
+   * `expectedRevision`, closing the stale-render-closure race. Mutations are
+   * serialized so concurrent row saves build from sequentially refreshed
+   * namespaces. Returns whether a write actually landed; an empty builder is a
+   * no-op that still keeps the UI draft intact.
    */
-  async mutate(ops: SettingsPathOpView[]): Promise<SettingsNamespaceView> {
+  async commit(build: (namespace: SettingsNamespaceView) => SettingsPathOpView[]): Promise<boolean> {
+    try {
+      const wrote = await this.enqueueMutation(async (): Promise<boolean> => {
+        const namespace = this.prepareMutation()
+        const ops = build(namespace)
+        if (ops.length === 0) return false
+        const next = unwrap(await this.api.settings.mutate({
+          ns: PI_AI_NS,
+          ops,
+          expectedRevision: namespace.revision,
+        }))
+        this.store.setSnapshot({ ...this.store.getSnapshot(), namespace: next })
+        return true
+      })
+      if (wrote) await this.reload()
+      return wrote
+    } catch (caught) {
+      // Keep sibling surfaces re-anchored on any failure path.
+      await this.reload()
+      throw caught
+    }
+  }
+
+  /** Serialize one mutation step after any prior queued mutation. */
+  private enqueueMutation<T>(run: () => Promise<T>): Promise<T> {
+    const pending = this.mutationTail.then(run, run)
+    this.mutationTail = pending.then(() => undefined, () => undefined)
+    return pending
+  }
+
+  /** Fence stale reads and return the authoritative mutation namespace. */
+  private prepareMutation(): SettingsNamespaceView {
     if (this.disposed) throw new Error('better-model-provider: controller disposed')
-    // A read that started before this write may still carry the old revision.
-    // Fence it before sending the mutation so its late response cannot roll
+    // The read that started before this write may still carry the old revision.
+    // Fence it before sending the mutation so its stale response cannot roll
     // the authoritative post-write CAS baseline backwards.
     this.generation += 1
     this.activeAbort?.abort()
     this.activeAbort = undefined
     const snapshot = this.store.getSnapshot()
     if (snapshot.namespace === undefined) throw new Error('better-model-provider: settings namespace unavailable')
-    const next = unwrap(await this.api.settings.mutate({
-      ns: PI_AI_NS,
-      ops,
-      expectedRevision: snapshot.namespace.revision,
-    }))
-    this.store.setSnapshot({ ...this.store.getSnapshot(), namespace: next })
-    return next
+    return snapshot.namespace
   }
 
   /** Reload after a mutation lands (or any forwarded invalidation). */
