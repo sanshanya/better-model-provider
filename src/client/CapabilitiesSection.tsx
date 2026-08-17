@@ -14,9 +14,9 @@ import type {
   CapabilitiesController, CapabilitiesState, CapabilityRowView, ReasoningEffortsValue,
 } from './store.ts'
 import { messageOf, validInputModalities, validReasoningEfforts } from './store.ts'
-import type { CapabilityPatch } from './writes.ts'
-import { declaredEditOps, patchOf, RowDraft, rowStateOf, stagedDiffers } from './writes.ts'
-import { CAPACITY_HINT, formatCapacity, validCapacity } from './capacity.ts'
+import type { CapabilityPatch, CapabilityState } from './writes.ts'
+import { declaredEditOps, stagedDiffers } from './writes.ts'
+import { CAPACITY_HINT, formatCapacity, parseCapacity, validCapacity } from './capacity.ts'
 import { HarnessRpcError } from './types.ts'
 import type { CapsKey } from './locales.ts'
 
@@ -317,6 +317,57 @@ function CapacityEditor(props: {
 /* ================================================================== */
 /* Model row                                                           */
 /* ================================================================== */
+
+/** Staged partial state of one row: null means untouched. */
+interface RowDraft {
+  /** The row edited reasoning (`undefined` staged means "inherit"). */
+  reasoningTouched: boolean
+  /** Staged reasoning-effort declaration. */
+  reasoning?: ReasoningEffortsValue | undefined
+  /** The row edited input (`undefined` staged means "inherit"). */
+  inputTouched: boolean
+  /** Staged input modalities. */
+  input?: readonly unknown[] | undefined
+  /** The row edited either capacity field (blank text means "inherit"). */
+  capacityTouched: boolean
+  /** Staged `contextWindow` text (K/M spellings; parsed on use). */
+  contextWindowText: string
+  /** Staged `maxTokens` text (K/M spellings; parsed on use). */
+  maxTokensText: string
+}
+
+/** Build the row's whole state: stored entry overlaid with the draft. */
+function rowStateOf(entry: Record<string, unknown>, draft: RowDraft | null): CapabilityState {
+  return {
+    reasoning: draft?.reasoningTouched === true
+      ? draft.reasoning
+      : entry['reasoningEfforts'] as ReasoningEffortsValue,
+    input: draft?.inputTouched === true
+      ? draft.input
+      : entry['input'] as readonly unknown[] | undefined,
+    // Capacities stage as text (a half-typed "38" is a draft too) and parse at
+    // the leaf: an unreadable spelling parses to NaN, differs from anything
+    // stored, and is refused by the apply-time validation below.
+    contextWindow: draft?.capacityTouched === true
+      ? parseCapacity(draft.contextWindowText)
+      : entry['contextWindow'] as number | undefined,
+    maxTokens: draft?.capacityTouched === true
+      ? parseCapacity(draft.maxTokensText)
+      : entry['maxTokens'] as number | undefined,
+  }
+}
+
+/** Convert the row's touched flags into a patch that preserves inheritance. */
+function patchOf(state: CapabilityState, draft: RowDraft): CapabilityPatch {
+  const patch: CapabilityPatch = {}
+  if (draft.reasoningTouched) patch.reasoning = { value: state.reasoning }
+  if (draft.inputTouched) patch.input = { value: state.input }
+  if (draft.capacityTouched) {
+    patch.contextWindow = { value: state.contextWindow }
+    patch.maxTokens = { value: state.maxTokens }
+  }
+  return patch
+}
 
 /** One model row: header, disclosure with both editors, and its save traffic. */
 function ModelRow(props: {
