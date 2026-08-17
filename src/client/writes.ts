@@ -9,7 +9,7 @@
  */
 
 import type { SettingsNamespaceView, SettingsPathOpView } from './types.ts'
-import { profileModels } from './store.ts'
+import { profileModels, userOwnsModels } from './store.ts'
 
 /** The full staged capability state of one model row. */
 export interface CapabilityState {
@@ -31,8 +31,10 @@ export interface CapabilityPatch {
   maxTokens?: { value: CapabilityState['maxTokens'] }
 }
 
+
+
 /**
- * Whether the staged state differs from what the entry stores today, so a
+ * Whether the staged state differs from what a row stores today, so a
  * row with no real change writes nothing.
  */
 export function stagedDiffers(entry: Record<string, unknown>, state: CapabilityState): boolean {
@@ -85,7 +87,7 @@ export function declaredEditOps(
   patch: CapabilityPatch,
 ): SettingsPathOpView[] {
   const models = profileModels(namespace, path, 'user')
-  if (index < 0 || index >= models.length) return []
+  if (!userOwnsModels(namespace, path) || index < 0 || index >= models.length) return []
   const nextModels = models.map((entry, i) => (i === index ? applyPatch(entry, patch) : { ...entry }))
   return [{ op: 'set', path: [...path, 'models'], value: nextModels }]
 }
