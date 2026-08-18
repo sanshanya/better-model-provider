@@ -19,9 +19,12 @@
 # 从 GitHub：
 dsh plugin --profile web add github:sanshanya/better-model-provider
 
-# 本地联调：
+# 本地联调（先构建——link: 规格按原样挂载）：
+npm install && npm run build
 dsh plugin --profile web add link:<本仓库绝对路径>
 ```
+
+GitHub 安装有一个**构建脚本门槛**：`github:` 规格只拉取源码——`lib/` 由本包的 `prepare` 构建——而 dsh 组包所用的 pnpm 默认不执行 git 依赖的构建脚本。安装器会打印需要放行的确切 key，把它加进该 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds` 下，然后重跑 `add` 命令。
 
 重启 `dsh web`，硬刷浏览器，设置侧边栏会出现「模型能力」。卸载：
 
@@ -59,7 +62,7 @@ CI 在每次推送跑封闭门禁（`ci` workflow），每晚 + 手动触发跑�
 
 ## **兼容性**
 
-已对照 master 提交 `47f943859b` 的 DeepSeek Harness 检出验证（2026-08-13；对应发布线为 `0.1.0-rc.6`——npm 的真实祖先是 rc.2 → rc.3 → rc.6，没有过 rc.5）。已知最低可用契约即该提交所服务的：`settings.describe/mutate`、`llm.providers`、`{ rpcId, result }` envelope、模型行 schema。涉及内部界面面（settings.section 注册形态）的部分按 experimental compatibility 对待：更新版本若不服务该面，插件会静默降级而不是破坏页面。
+已对照 master 提交 `47f943859b` 的 DeepSeek Harness 检出验证（2026-08-13）。当前发布线为 `0.1.0-rc.7`（npm 真实祖先：rc.2 → rc.3 → rc.6 → rc.7——0.1.0 线没有过 rc.4/rc.5），夜间 live 车道用真实浏览器直接起该线；本地开发以 devDependency `^0.1.0-rc.7` 跟随，typecheck 即漂移仲裁。已知最低可用契约即该提交所服务的：`settings.describe/mutate`、`llm.providers`、`{ rpcId, result }` envelope、模型行 schema。涉及内部界面面（settings.section 注册形态）的部分按 experimental compatibility 对待：更新版本若不服务该面，插件会静默降级而不是破坏页面。
 
 ## **License**
 

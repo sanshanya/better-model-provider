@@ -82,8 +82,8 @@ export async function liveBoot(opts: LiveBootOptions = {}): Promise<LiveBoot> {
         // Bundles ride the published rc line — exactly how `dsh plugin add`
         // resolves them for a real user; workspace links into the checkout
         // leave transitively-installed client packages without built libs.
-        '@deepseek-ai/dsh-base': '0.1.0-rc.6',
-        '@deepseek-ai/dsh-web-app': '0.1.0-rc.6',
+        '@deepseek-ai/dsh-base': '0.1.0-rc.7',
+        '@deepseek-ai/dsh-web-app': '0.1.0-rc.7',
       },
     }, null, 1))
     execFileSync('pnpm', ['install', '--ignore-scripts'], { cwd: profileDir, stdio: 'pipe', shell })

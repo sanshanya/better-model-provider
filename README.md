@@ -19,9 +19,12 @@ The official Models page manages providers and model rows, but two per-model cap
 # From GitHub:
 dsh plugin --profile web add github:sanshanya/better-model-provider
 
-# Local checkout:
+# Local checkout (build first — a `link:` spec is mounted as-is):
+npm install && npm run build
 dsh plugin --profile web add link:<absolute path to this repo>
 ```
+
+GitHub installs carry a **build-script catch**: the `github:` spec fetches source only — `lib/` is built by this package's `prepare` run — and pnpm, which dsh uses to compose the profile, does not run a git dependency's build scripts by default. The installer prints the exact key to allow; add it under `allowBuilds` in the profile's `pnpm-workspace.yaml`, then re-run the `add` command.
 
 Restart `dsh web`, hard-refresh the browser, and the settings sidebar gains **Model capabilities**. Uninstall:
 
@@ -44,7 +47,7 @@ See `CONTRIBUTING.md` for the gate list (build / test / coverage / lint / typech
 
 ## **Compatibility**
 
-Verified against a DeepSeek Harness checkout at master commit `47f943859b` (2026-08-13; the published contract line is `0.1.0-rc.6`, whose real npm ancestry is rc.2 → rc.3 → rc.6 — there never was an rc.5). Minimum-known-good: the contract that commit serves — `settings.describe/mutate`, `llm.providers`, the `{ rpcId, result }` envelope, and the model row schema. Internal-only surfaces (settings.section registration shape) are treated as experimental compatibility: a newer harness that doesn't serve them degrades silently instead of breaking the page.
+Verified against a DeepSeek Harness checkout at master commit `47f943859b` (2026-08-13). The published contract line is `0.1.0-rc.7` (real npm ancestry: rc.2 → rc.3 → rc.6 → rc.7 — the 0.1.0 line never had an rc.4/rc.5), which the nightly live lanes boot in a real browser; development tracks it as devDependency `^0.1.0-rc.7` with typecheck as the drift arbiter. Minimum-known-good: the contract that commit serves — `settings.describe/mutate`, `llm.providers`, the `{ rpcId, result }` envelope, and the model row schema. Internal-only surfaces (settings.section registration shape) are treated as experimental compatibility: a newer harness that doesn't serve them degrades silently instead of breaking the page.
 
 ## **License**
 

@@ -390,14 +390,27 @@ describe('read-only and failure postures', () => {
     expect(reasoningSelect().disabled).toBe(true)
   })
 
-  test('an unclassified route is labeled and disabled', async () => {
+  test('catalog and unclassified routes never enter the page', async () => {
     const arrange = defaultArrangement()
-    arrange.user = { providers: { mystery: {} } }
+    // Declared-only product: capability editing happens on the models the
+    // user declares; catalog routes and routes the adapter cannot classify
+    // are filtered at the join, so the page reads as its empty state.
+    arrange.user = {
+      providers: {
+        catalog: { models: [{ id: 'C-1' }] },
+        mystery: { models: [{ id: 'M-1' }] },
+      },
+    }
     arrange.value = arrange.user
-    arrange.providers = [Object.assign(providerEntry('mystery', false), { declared: undefined })]
+    arrange.providers = [
+      providerEntry('catalog', false),
+      Object.assign(providerEntry('mystery', false), { declared: undefined }),
+    ]
     await mount(arrange)
-    expect(screen.queryByText(en.unknownRoute)).not.toBeNull()
-    expect(screen.queryByText(en.unknownRouteHint)).not.toBeNull()
+    expect(screen.queryByText(en.empty)).not.toBeNull()
+    expect(screen.queryByText(en.emptyHint)).not.toBeNull()
+    expect(screen.queryByText('catalog')).toBeNull()
+    expect(screen.queryByText('mystery')).toBeNull()
   })
 
   test('read-only settings hides write affordances', async () => {

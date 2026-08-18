@@ -554,14 +554,16 @@ function ProviderCard(props: {
     // expectedRevision, writes, and owns the success/failure reload.
     return controller.commit(snapshot => declaredEditOps(snapshot, row.entry.settingsPath, index, patch))
   }, [controller, row.entry.settingsPath])
-  const rowWritable = writable && (row.entry.declared !== true || row.declaredEditable)
+  // Rows are declared routes by construction (the store filters), so the
+  // only writable question left is whether the user layer owns models[].
+  const rowWritable = writable && row.declaredEditable
   return (
     <section className="bmp-card">
       <header className="bmp-cardHeader">
         <span className="bmp-cardTitle">{row.entry.displayName}</span>
         <span className="bmp-cardMeta">{row.entry.provider}</span>
         <span className="bmp-tag">
-          {row.entry.declared === true ? t('declaredRoute') : t('unknownRoute')}
+          {t('declaredRoute')}
         </span>
       </header>
       {row.entry.declared === true && !row.declaredEditable && (
@@ -586,7 +588,6 @@ function ProviderCard(props: {
             />
           )
         })}
-        {row.entry.declared === undefined && <p className="bmp-muted">{t('unknownRouteHint')}</p>}
       </div>
     </section>
   )

@@ -179,7 +179,7 @@ export interface CapabilityRowView {
   configured: boolean
   /** The route's effective model entries; display only. */
   models: Record<string, unknown>[]
-  /** Whether a declared route owns its models array in the user layer. */
+  /** Whether this row (a declared route) owns its models array in the user layer. */
   declaredEditable: boolean
 }
 
@@ -315,7 +315,11 @@ export class CapabilitiesController {
         error: null,
         writable: settings.writable,
         namespace,
-        rows: joined.filter(row => row.configured && row.entry.declared !== false),
+        // Declared routes only: capability editing happens on the models the
+        // user declares. Catalog routes and routes the adapter cannot classify
+        // never enter the page — their capability fields are not this editor's
+        // product.
+        rows: joined.filter(row => row.configured && row.entry.declared === true),
         ...extractCapabilityVocabulary(namespace),
         
       })

@@ -1,6 +1,6 @@
 # Contributing
 
-Toolchain here is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot manages bumps. Do not mix pnpm/pnpm-lock files into this repo.
+Toolchain here is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks only the `@deepseek-ai/*` contract family weekly (typecheck is the arbiter); every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this repo.
 
 Functionality merges only with every gate green, in this order:
 
@@ -14,7 +14,8 @@ npm run build
 npm run verify:pack
 
 # Opt-in, real-harness gates (need a local DeepSeek Harness checkout with
-# `pnpm install` run; the functional lane also needs a Chromium executable):
+# `pnpm install` + `pnpm build` run; the functional lane also needs a
+# Chromium-family executable — Chrome, Chromium, or Edge all work):
 BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live
 BMP_DSH_DIR=/path/to/deepseek-harness \
 BMP_CHROME_PATH="/path/to/chromium" npm run test:functional
@@ -32,7 +33,7 @@ gate is a failed gate.
 - Pushed invalidations are scoped to this section's own namespace.
 - Reads use an explicit layer: `namespace.value` for effective display, `namespace.user` for user-owned writes, and `namespace.base` only for diagnostics/comparison. A declared route whose `models[]` exists only in the base layer is displayed read-only rather than materialized into user settings.
 - The page edits only model capabilities. Provider credentials, provider/model lifecycle, and route enablement remain owned by the official Models page.
-- Each row produces a touched patch: untouched fields produce no operation, while an explicit inherit action produces an `unset` operation. Catalog rows write capability leaves under `modelOverrides`; declared rows rewrite only a user-owned `models[]` array.
+- Each row produces a touched patch: untouched fields produce no operation, while an explicit inherit action removes the leaf from the user-layer entry. Rows are declared routes only — capability editing happens on the models the user declares; catalog and unclassified routes never enter the page. A declared route whose `models[]` is inherited from a lower layer is read-only and is never materialized into user settings. Every write is one `set` op rewriting the whole user-owned `models[]` array.
 - Mutations keep user drafts on failure: `settings-conflict` shows the localized conflict copy, every other wire failure shows its reason next to the action.
 - The tests must not speak a protocol the harness does not serve: the scripted face and every stub override assert the payload is exactly `{}`, and envelope failures are real `RpcError` union members — no casts, no `as never`.
 - `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` stay on; there is no `any` anywhere.
@@ -40,8 +41,8 @@ gate is a failed gate.
 
 ## Coverage policy
 
-v8 per-file 100% for lines / functions / statements and 95% for branches, enforced by `vitest.config.ts`. Guards exist only where UI or code can genuinely reach them; never reshape production code to satisfy coverage, and never the reverse (a guard that is unreachable gets removed, not ignored). The branch slack is earned, not spent in advance: a branch-only test whose scenario cannot plausibly occur (corrupted stored documents, impossible key events) is deleted, not kept for the number.
+v8 per-file 100% for lines / functions / statements and 95% for branches, enforced by `vitest.config.ts`; the one per-file exemption is the host half `src/index.ts`, a documented no-op keepalive. Guards exist only where UI or code can genuinely reach them; never reshape production code to satisfy coverage, and never the reverse (a guard that is unreachable gets removed, not ignored). The branch slack is earned, not spent in advance: a branch-only test whose scenario cannot plausibly occur (corrupted stored documents, impossible key events) is deleted, not kept for the number.
 
 ## Harness compatibility anchors
 
-The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract (peerDependency `^0.1.0-rc.5 || ^0.1.0-rc.6`, devDependency for local development). An upstream drift shows up as a typecheck failure in `npm ci` in any new env, and weekly Dependabot PRs fail CI when the bump breaks the contract.
+The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract (peerDependency `^0.1.0-rc.7`, devDependency for local development). An upstream drift shows up as a typecheck failure in `npm ci` in any new env, and weekly Dependabot PRs fail CI when the bump breaks the contract.
