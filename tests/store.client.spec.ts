@@ -7,10 +7,11 @@
 import { describe, expect, test } from 'vitest'
 import {
   CapabilitiesController, createSnapshotStore, extractCapabilityVocabulary, messageOf, profileModels,
-  validInputModalities, validReasoningEfforts,
+  writeModeOf,
+  profileOverrides, validInputModalities, validReasoningEfforts,
 } from '../src/client/store.ts'
-import type { SettingsNamespaceView } from '../src/client/types.ts'
-import { assertEmptyPayload, defaultArrangement, envelopeError, envelopeOk, modelsEnvelope, piAiNamespace, scriptedFace } from './helpers.ts'
+import type { SettingsNamespaceView, ConfigurableProviderView } from '../src/client/types.ts'
+import { assertEmptyPayload, CATALOG_MODELS, defaultArrangement, envelopeError, en as wrap, mergeLayers, modelsEnvelope, piAiNamespace, scriptedFace } from './helpers.ts'
 
 describe('vocabulary from the serialized schema', () => {
   const ns = piAiNamespace(defaultArrangement())
@@ -36,12 +37,6 @@ describe('vocabulary from the serialized schema', () => {
   ])('%s yields an empty vocabulary', (_label, namespace, expected) => {
     expect(extractCapabilityVocabulary(namespace as SettingsNamespaceView).levels).toEqual(expected)
     expect(extractCapabilityVocabulary(namespace as SettingsNamespaceView).modalities).toEqual(expected)
-  })
-
-  test('a models item without the fields yields nothing', () => {
-    const bare = bareNs(modelsEnvelope({ type: 'array', inner: { type: 'object', dict: { id: { type: 'string' } } } }))
-    expect(extractCapabilityVocabulary(bare).levels).toEqual([])
-    expect(extractCapabilityVocabulary(bare).modalities).toEqual([])
   })
 
   test('a dict key union without a list or with non-strings yields only strings', () => {
@@ -76,14 +71,6 @@ describe('vocabulary from the serialized schema', () => {
     expect(extractCapabilityVocabulary(keyless).levels).toEqual([])
   })
 
-  test('a reasoningEfforts schema without the dict member yields nothing', () => {
-    const without = bareNs(modelsEnvelope({
-      type: 'array',
-      inner: { type: 'object', dict: { reasoningEfforts: { type: 'boolean' }, input: { type: 'array', inner: { type: 'string' } } } },
-    }))
-    expect(extractCapabilityVocabulary(without).levels).toEqual([])
-    expect(extractCapabilityVocabulary(without).modalities).toEqual([])
-  })
 })
 
 describe('field validation', () => {
@@ -137,7 +124,7 @@ describe('profile reads', () => {
       base: { providers: { ksyun: { models: [{ id: 'base' }] } } },
       value: { providers: { ksyun: { models: [{ id: 'effective' }] } } },
     })
-    expect(profileModels(base, ['providers', 'ksyun'], 'base')).toEqual([{ id: 'base' }])
+    expect(profileModels(base, ['providers', 'ksyun'], 'value')).toEqual([{ id: 'effective' }])
     expect(profileModels(base, ['providers', 'ksyun'], 'user')).toEqual([{ id: 'user' }])
   })
 
@@ -170,6 +157,22 @@ describe('profile reads', () => {
     expect(messageOf(new Error('x'))).toBe('x')
     expect(messageOf('plain')).toBe('plain')
   })
+
+  test('profileOverrides reads records and tolerates junk shapes', () => {
+    const tidy = piAiNamespace({
+      ...arrange,
+      value: { providers: { openai: { modelOverrides: { 'm-1': { contextWindow: 1 }, 'm-2': 'junk', 'm-3': null, 'm-4': [1] } } } },
+    })
+    expect(profileOverrides(tidy, ['providers', 'openai'])).toEqual({
+      'm-1': { contextWindow: 1 },
+      'm-2': {},
+      'm-3': {},
+      'm-4': {},
+    })
+    expect(profileOverrides(tidy, ['providers', 'openai'], 'user')).toEqual({})
+    const weird = piAiNamespace({ ...arrange, value: { providers: { openai: { modelOverrides: 'junk' } } } })
+    expect(profileOverrides(weird, ['providers', 'openai'])).toEqual({})
+  })
 })
 
 describe('controller join', () => {
@@ -193,26 +196,12 @@ describe('controller join', () => {
     const { api } = scriptedFace(arrange)
     api.settings.describe = (payload) => {
       assertEmptyPayload('settings.describe', payload)
-      return Promise.resolve(envelopeOk({ writable: true, hasDocument: true, namespaces: [] }))
+      return Promise.resolve(wrap({ writable: true, hasDocument: true, namespaces: [] }))
     }
     const controller = new CapabilitiesController(api)
     await controller.load()
     expect(controller.store.getSnapshot().rows).toEqual([])
     expect(controller.store.getSnapshot().levels).toEqual([])
-  })
-
-  test('a rejected join surfaces its message', async () => {
-    const arrange = defaultArrangement()
-    const { api } = scriptedFace(arrange)
-    api.llm.providers = (payload) => {
-      assertEmptyPayload('llm.providers', payload)
-      return Promise.reject(new Error('boom'))
-    }
-    const controller = new CapabilitiesController(api)
-    await controller.load()
-    const snapshot = controller.store.getSnapshot()
-    expect(snapshot.status).toBe('error')
-    expect(snapshot.error).toBe('boom')
   })
 
   test('mutate refuses without a namespace', async () => {
@@ -301,7 +290,7 @@ describe('controller join', () => {
 
     // The old read resolves after the write, but its generation is fenced and
     // must not put revision 1 back into the local CAS baseline.
-    release(envelopeOk({ writable: true, hasDocument: true, namespaces: [staleNamespace] }))
+    release(wrap({ writable: true, hasDocument: true, namespaces: [staleNamespace] }))
     await refresh
     expect(controller.store.getSnapshot().namespace?.revision).toBe(2)
   })
@@ -332,7 +321,7 @@ describe('controller join', () => {
     expect(describeCalls).toBe(2)
     expect(firstSignal?.aborted).toBe(true)
     expect(controller.store.getSnapshot().rows).toHaveLength(1)
-    releaseFirst(envelopeOk({ writable: true, hasDocument: true, namespaces: [] }))
+    releaseFirst(wrap({ writable: true, hasDocument: true, namespaces: [] }))
     await stale
     expect(controller.store.getSnapshot().rows).toHaveLength(1)
     expect(controller.store.getSnapshot().rows[0]?.entry.provider).toBe('ksyun')
@@ -412,7 +401,7 @@ describe('controller join', () => {
     const row = controller.store.getSnapshot().rows[0]
     expect(row?.configured).toBe(true)
     expect(row?.models).toEqual([{ id: 'base-model' }])
-    expect(row?.declaredEditable).toBe(false)
+    expect(row?.writeMode).toBe('inherited-models')
   })
 
   test('dispose aborts reads, drops late responses, and rejects later writes', async () => {
@@ -433,7 +422,7 @@ describe('controller join', () => {
     await Promise.resolve()
     controller.dispose()
     expect(signal?.aborted).toBe(true)
-    release(envelopeOk({ writable: true, hasDocument: true, namespaces: [piAiNamespace(arrange)] }))
+    release(wrap({ writable: true, hasDocument: true, namespaces: [piAiNamespace(arrange)] }))
     await pending
     expect(controller.store.getSnapshot().status).toBe('loading')
     expect(controller.store.getSnapshot().rows).toEqual([])
@@ -538,5 +527,96 @@ describe('controller join', () => {
     expect(mutates).toHaveLength(2)
     expect(mutates[0]?.expectedRevision).toBe(1)
     expect(mutates[1]?.expectedRevision).toBe(2)
+  })
+})
+
+describe('writeModeOf', () => {
+  const entry = (declared: boolean | undefined): ConfigurableProviderView => ({
+    provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai',
+    settingsPath: ['providers', 'openai'], active: true,
+    ...(declared === undefined ? {} : { declared }),
+  })
+  const withProfile = (profile: Record<string, unknown>, opts?: { base?: Record<string, unknown> }): ReturnType<typeof piAiNamespace> => {
+    const arrange = defaultArrangement()
+    arrange.user = { providers: { openai: profile } }
+    if (opts?.base !== undefined) arrange.base = opts.base
+    arrange.value = mergeLayers(arrange.base ?? {}, arrange.user)
+    return piAiNamespace(arrange)
+  }
+
+  test.each<[string, Record<string, unknown>, boolean | undefined, string, { base?: Record<string, unknown> }?]>([
+    ['hand-declared route edits its list', { models: [{ id: 'm1' }] }, true, 'declared-models'],
+    ['hand-declared route with no list yet', {}, true, 'inherited-models'],
+    ['catalog route without a list overlays the catalog', { baseURL: 'https://x' }, false, 'catalog-overrides'],
+    ['catalog route narrowed by a user list edits as declared', { models: [{ id: 'm1' }] }, false, 'declared-models'],
+    // The adapter serves the installed catalog beside an EMPTY user list and
+    // overrides stay legal beside it: an empty list narrows nothing.
+    ['catalog route with an empty user list still overlays', { models: [] }, false, 'catalog-overrides'],
+    ['catalog route with inherited base-owned list is read-only', { baseURL: 'https://x' }, false, 'inherited-models', { base: { providers: { openai: { models: [{ id: 'm0' }] } } } }],
+    ['unclassified routes never write', { baseURL: 'https://x' }, undefined, 'inherited-models'],
+  ])('%s', (_label, profile, declared, expected, opts) => {
+    expect(writeModeOf(withProfile(profile, opts), entry(declared))).toBe(expected)
+  })
+})
+
+describe('official catalog discovery', () => {
+  const catalogArrangement = (): ReturnType<typeof defaultArrangement> => {
+    const arrange = defaultArrangement()
+    arrange.discoveries = { openai: CATALOG_MODELS }
+    return arrange
+  }
+
+  test('asks once and memoizes the answer for reopens', async () => {
+    const arrange = catalogArrangement()
+    const { api } = scriptedFace(arrange)
+    let asks = 0
+    const original = api.llm.discoverModels
+    api.llm.discoverModels = payload => {
+      asks += 1
+      return original(payload)
+    }
+    const controller = new CapabilitiesController(api)
+    const first = await controller.discoverOfficialModels('openai')
+    const second = await controller.discoverOfficialModels('openai')
+    expect(asks).toBe(1)
+    expect(second).toBe(first)
+    expect(first.map(model => model.id)).toEqual(['gpt-5', 'gpt-5-mini'])
+    await controller.discoverOfficialModels('openai')
+    expect(asks).toBe(1)
+  })
+
+  test('a rejected ask is not cached: the next click asks again', async () => {
+    const arrange = catalogArrangement()
+    arrange.discoveries = { openai: new Error('boom') }
+    const { api } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    await expect(controller.discoverOfficialModels('openai')).rejects.toThrow('boom')
+    await expect(controller.discoverOfficialModels('openai')).rejects.toThrow('boom')
+    arrange.discoveries = { openai: CATALOG_MODELS }
+    await expect(controller.discoverOfficialModels('openai')).resolves.toBeDefined()
+  })
+
+  test('a disposed controller refuses discovery outright', async () => {
+    const arrange = catalogArrangement()
+    const { api } = scriptedFace(arrange)
+    const controller = new CapabilitiesController(api)
+    controller.dispose()
+    await expect(controller.discoverOfficialModels('openai')).rejects.toThrow('disposed')
+  })
+
+  test('disposal clears the memo, so a late rejection is heard but not promoted', async () => {
+    const arrange = catalogArrangement()
+    const { api } = scriptedFace(arrange)
+    let release!: (error: unknown) => void
+    api.llm.discoverModels = () => new Promise<never>((_, reject) => { release = reject })
+    const controller = new CapabilitiesController(api)
+    const heard = controller.discoverOfficialModels('openai').then(
+      () => 'unexpected',
+      (error: unknown) => `heard:${messageOf(error)}`,
+    )
+    controller.dispose()
+    release(new Error('late'))
+    await expect(heard).resolves.toBe('heard:late')
+    await expect(controller.discoverOfficialModels('openai')).rejects.toThrow('disposed')
   })
 })

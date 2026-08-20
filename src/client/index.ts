@@ -8,10 +8,10 @@
  */
 
 import { useSyncExternalStore } from 'react'
-import { CapabilitiesController } from './store.ts'
+import { CapabilitiesController, PI_AI_NS } from './store.ts'
 import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import type { CapabilitiesSectionInjected } from './CapabilitiesSection.tsx'
-import { en, zh, type CapsKey } from './locales.ts'
+import { en, zh, type CapsKey, type TFn } from './locales.ts'
 import type { ClientShim } from './types.ts'
 import { STYLES } from './styles.ts'
 
@@ -20,9 +20,6 @@ export const name = 'better-model-provider'
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'better-model-provider'
-
-/** The settings namespace this plugin edits; unrelated documents do not reload it. */
-const SETTINGS_NS = 'llm-pi-ai'
 
 /** Cordis fiber dependencies of the browser half. */
 export const inject = ['slots', 'locale', 'connection', 'remote']
@@ -57,7 +54,8 @@ export function apply(ctx: ClientShim): void {
     )
   // Registration-time text (the nav label thunk) shares one bound translate
   // with the render-time face; copy freshness rides the locale revision.
-  const t = ctx.locale.bind(NS) as CapabilitiesSectionInjected['t']
+  const bound = ctx.locale.bind(NS)
+  const t: TFn = (key, params) => bound(key, params)
   const injectFace = (): CapabilitiesSectionInjected => ({ controller, useSnapshot, t })
 
   ctx.effect(() => {
@@ -66,7 +64,7 @@ export function apply(ctx: ClientShim): void {
       // The payload is `(ns, revision)`: edits to unrelated documents must
       // not cost this page a fresh join.
       ctx.remote.$on('settings/document-updated', ns => {
-        if (ns === SETTINGS_NS) refreshIfLoaded(controller)
+        if (ns === PI_AI_NS) refreshIfLoaded(controller)
       }),
       ctx.remote.$on('llm/adapters-updated', refresh),
       ctx.on('connection/reset', refresh),
@@ -74,7 +72,7 @@ export function apply(ctx: ClientShim): void {
     return () => { for (const dispose of disposers) dispose() }
   }, 'better-model-provider: pushed invalidations')
 
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
+  ctx.slots.inject('settings.section', () => ctx.slots.register<CapabilitiesSectionInjected, { close: () => void }>({
     name: 'settings.section',
     id: NS,
     order: 11,

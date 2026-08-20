@@ -8,7 +8,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import type { RpcError, RpcId, RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  ConfigurableProviderView, IRemoteApi, SettingsNamespaceView,
+  ConfigurableProviderView, DiscoveredModelView, IRemoteApi, SettingsNamespaceView,
   SettingsPathOpView,
 } from '../src/client/types.ts'
 
@@ -54,7 +54,8 @@ function clone<T>(value: T): T {
 }
 
 /** Merge layered settings the way the settings document exposes them: objects merge, arrays replace. */
-function mergeLayers(base: unknown, user: unknown): unknown {
+/** Host-faithful merge for fixture values: objects merge, arrays/scalars replace. */
+export function mergeLayers(base: unknown, user: unknown): unknown {
   if (user === undefined) return clone(base)
   if (!isRecord(base) || !isRecord(user)) return clone(user)
   const merged = clone(base)
@@ -99,7 +100,15 @@ export interface FaceArrangement {
   value: unknown
   base?: unknown
   providers: ConfigurableProviderView[]
+  /** Per-provider `llm.discoverModels` answer, or an error to reject with. */
+  discoveries?: Record<string, readonly DiscoveredModelView[] | Error>
 }
+
+/** The official-catalog fixture the discovery seam answers for `openai`. */
+export const CATALOG_MODELS: readonly DiscoveredModelView[] = [
+  { id: 'gpt-5', name: 'GPT-5', contextWindow: 400000, maxTokens: 128000 },
+  { id: 'gpt-5-mini', name: 'GPT-5 mini', contextWindow: 400000, maxTokens: 64000 },
+]
 
 /** Re-exported so the schema variants the specs compose arrive in a form the rehydrated walk consumes. */
 export { Schema }
@@ -146,12 +155,14 @@ export function piAiSchema(entry: Schema = modelsItemSchema()): unknown {
 
 /** The fixture llm-pi-ai namespace view. */
 export function piAiNamespace(arrange: FaceArrangement): SettingsNamespaceView {
+  // Presence semantics match the host: absent layers are OMITTED, never
+  // written as present-`undefined` keys.
   return {
     ns: 'llm-pi-ai',
     schema: piAiSchema(),
     value: arrange.value,
-    base: arrange.base,
-    user: arrange.user,
+    ...(arrange.base === undefined ? {} : { base: arrange.base }),
+    ...(arrange.user === undefined ? {} : { user: arrange.user }),
     applies: 'live',
     secrets: [],
     revision: arrange.revision,
@@ -159,16 +170,32 @@ export function piAiNamespace(arrange: FaceArrangement): SettingsNamespaceView {
 }
 
 /** One configurable directory entry. */
-export function providerEntry(provider: string, declared: boolean, path = ['providers', provider]): ConfigurableProviderView {
-  const displayName = provider === 'ksyun' ? 'KSYun' : provider === 'ollama' ? 'Ollama' : provider
+export function providerEntry(provider: string, declared: boolean, path = ['providers', provider], displayName?: string): ConfigurableProviderView {
+  const display = displayName ?? (provider === 'ksyun' ? 'KSYun' : provider === 'ollama' ? 'Ollama' : provider)
   return {
     provider,
-    displayName,
+    displayName: display,
     settingsNs: 'llm-pi-ai',
     settingsPath: path,
     declared,
     active: true,
   }
+}
+
+/**
+ * One openai catalog route arrangement: a baseURL-only profile by default;
+ * pass `user: {}` for the dormant (unconfigured) shape.
+ */
+export function catalogArrangement(opts?: {
+  /** User-layer override for the openai profile (pass `{}` for a dormant route). */
+  user?: Record<string, unknown>
+}): FaceArrangement {
+  const arrange = defaultArrangement()
+  arrange.user = opts?.user ?? { providers: { openai: { baseURL: 'https://proxy.test/v1' } } }
+  arrange.value = arrange.user
+  arrange.providers = [{ ...providerEntry('openai', false), displayName: 'OpenAI' }]
+  arrange.discoveries = { openai: CATALOG_MODELS }
+  return arrange
 }
 
 let next = 0
@@ -195,7 +222,7 @@ export function scriptedFace(arrange: FaceArrangement): { api: IRemoteApi; mutat
       },
       mutate: payload => {
         mutates.push({ ns: payload.ns, ops: payload.ops, expectedRevision: payload.expectedRevision })
-        if (payload.expectedRevision !== arrange.revision) {
+        if (payload.expectedRevision !== undefined && payload.expectedRevision !== arrange.revision) {
           return Promise.resolve(envelopeError('settings-conflict', `expected revision ${String(payload.expectedRevision)}, actual ${String(arrange.revision)}`))
         }
         applySettingsMutation(arrange, payload.ops)
@@ -207,14 +234,20 @@ export function scriptedFace(arrange: FaceArrangement): { api: IRemoteApi; mutat
         assertEmptyPayload('llm.providers', payload)
         return Promise.resolve(en({ providers: arrange.providers }))
       },
+      discoverModels: payload => {
+        // The real seam answers catalog routes from the installed catalog;
+        // the script answers exactly what the case arranged, or refuses
+        // discovery for an unarranged provider the way a draft would fail.
+        const answer = arrange.discoveries?.[payload.provider ?? '']
+        if (answer instanceof Error) return Promise.reject(answer)
+        if (answer === undefined) {
+          return Promise.reject(new Error(`scriptedFace: no discovery arranged for ${String(payload.provider)}`))
+        }
+        return Promise.resolve(en({ models: [...answer] }))
+      },
     },
   }
   return { api, mutates }
-}
-
-/** Envelope helper for tests that stub overrides with raw business values. */
-export function envelopeOk<T>(value: T): RpcResponse<T> {
-  return en(value)
 }
 
 /** Envelope variant the tests construct for business-failure scenarios. */

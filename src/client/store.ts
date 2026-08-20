@@ -10,7 +10,7 @@
  */
 
 import type {
-  ConfigurableProviderView, IRemoteApi, SettingsNamespaceView,
+  ConfigurableProviderView, DiscoveredModelView, IRemoteApi, SettingsNamespaceView,
   SettingsPathOpView, RpcResponse,
 } from './types.ts'
 import Schema from '@deepseek-ai/schemastery'
@@ -46,12 +46,16 @@ export const PI_AI_NS = 'llm-pi-ai'
  */
 const PROBE_ROUTE = '\u0000probe'
 
-/** One reasoning-effort declaration value (`false`, level dict, or absent). */
-export type ReasoningEffortsValue = Record<string, unknown> | false | undefined
-
 /** Human text for a rejected wire call. */
 export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** String literals of one union node's list — empty for any other shape. */
+function unionStrings(node: unknown): string[] {
+  const list = (node as { type?: string; list?: readonly { value?: unknown }[] } | undefined)
+  if (list?.type !== 'union' || list.list === undefined) return []
+  return list.list.map(member => member.value).filter((value): value is string => typeof value === 'string')
 }
 
 /**
@@ -59,8 +63,8 @@ export function messageOf(error: unknown): string {
  *
  * The reasoning and input vocabularies are not two independent parsing paths:
  * they both begin at the same `models` entry node inside the owning namespace.
- * Extracting them together keeps one conceptual schema-to-vocabulary operation
- * and avoids rehydrating/parsing the schema twice per load.
+ * Extracting them together keeps one conceptual schema-to-vocabulary operation;
+ * a malformed envelope yields an empty vocabulary rather than a phantom tree.
  */
 export function extractCapabilityVocabulary(
   namespace: SettingsNamespaceView | undefined,
@@ -68,31 +72,23 @@ export function extractCapabilityVocabulary(
   const empty: { levels: string[]; modalities: string[] } = { levels: [], modalities: [] }
   if (namespace === undefined) return empty
   const models = nodeAtPath(rehydrateSchema(namespace.schema), ['providers', PROBE_ROUTE, 'models']) as
-    | { type?: string; inner?: unknown }
+    | { type?: string; inner?: { type?: string; dict?: Record<string, unknown> } }
     | undefined
-  if (models?.type !== 'array' || models.inner === undefined) return empty
-  const entry = models.inner as { type?: string; dict?: Record<string, unknown> } | undefined
+  const entry = models?.type === 'array' ? models.inner : undefined
   if (entry?.type !== 'object' || entry.dict === undefined) return empty
 
-  const levels: string[] = []
+  // reasoning: union whose dict member keys off a union of level literals.
   const efforts = entry.dict['reasoningEfforts'] as { type?: string; list?: readonly unknown[] } | undefined
-  if (efforts?.type === 'union' && efforts.list !== undefined) {
-    const dict = efforts.list.find(member => (member as { type?: string }).type === 'dict') as
-      | { sKey?: { type?: string; list?: readonly { value?: unknown }[] } }
+  const dict = efforts?.type === 'union' && efforts.list !== undefined
+    ? efforts.list.find(member => (member as { type?: string }).type === 'dict') as
+      | { sKey?: unknown }
       | undefined
-    if (dict?.sKey?.type === 'union' && dict.sKey.list !== undefined) {
-      levels.push(...dict.sKey.list.map(member => member.value).filter((value): value is string => typeof value === 'string'))
-    }
-  }
+    : undefined
+  const levels = dict === undefined ? [] : unionStrings(dict.sKey)
 
-  const modalities: string[] = []
+  // input: array whose inner union lists the modality literals.
   const input = entry.dict['input'] as { type?: string; inner?: unknown } | undefined
-  if (input?.type === 'array' && input.inner !== undefined) {
-    const union = input.inner as { type?: string; list?: readonly { value?: unknown }[] } | undefined
-    if (union?.type === 'union' && union.list !== undefined) {
-      modalities.push(...union.list.map(member => member.value).filter((value): value is string => typeof value === 'string'))
-    }
-  }
+  const modalities = input?.type === 'array' ? unionStrings(input.inner) : []
 
   return { levels, modalities }
 }
@@ -134,7 +130,7 @@ export function validInputModalities(value: unknown, choices: readonly string[] 
 }
 
 /** The settings layer from which a profile projection is read. */
-export type SettingsLayer = 'value' | 'user' | 'base'
+type SettingsLayer = 'value' | 'user'
 
 /** Read one provider profile from one explicit settings layer. */
 function profileOf(
@@ -142,8 +138,7 @@ function profileOf(
   path: readonly string[],
   layer: SettingsLayer = 'value',
 ): Record<string, unknown> {
-  const source = layer === 'user' ? namespace.user : layer === 'base' ? namespace.base : namespace.value
-  const profile = getPath(source ?? {}, path)
+  const profile = getPath((layer === 'user' ? namespace.user : namespace.value) ?? {}, path)
   return typeof profile === 'object' && profile !== null && !Array.isArray(profile)
     ? profile as Record<string, unknown>
     : {}
@@ -171,16 +166,75 @@ export function userOwnsModels(
   return hasPath(namespace.user ?? {}, [...path, 'models'])
 }
 
+/** Whether the user layer owns a NON-EMPTY `models[]` — only such a list makes the route's own list real. */
+export function userOwnsNonEmptyModels(
+  namespace: SettingsNamespaceView,
+  path: readonly string[],
+): boolean {
+  return userOwnsModels(namespace, path) && profileModels(namespace, path, 'user').length > 0
+}
+
+/** Read a profile's `modelOverrides` dict from one explicit layer, as records. */
+export function profileOverrides(
+  namespace: SettingsNamespaceView,
+  path: readonly string[],
+  layer: SettingsLayer = 'value',
+): Record<string, Record<string, unknown>> {
+  const value = profileOf(namespace, path, layer)['modelOverrides']
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [id, override] of Object.entries(value as Record<string, unknown>)) {
+    out[id] = typeof override === 'object' && override !== null && !Array.isArray(override)
+      ? override as Record<string, unknown>
+      : {}
+  }
+  return out
+}
+
+/**
+ * Where one row's capability edits persist — derived from ownership facts,
+ * never from the route label alone:
+ *
+ * - `declared-models`: the user layer owns the route's effective `models[]`
+ *   — a hand-declared route, or a catalog route whose served list the user
+ *   narrowed. Edits rewrite entries of that array.
+ * - `catalog-overrides`: a catalog route with no effective `models[]`;
+ *   edits land as sparse `modelOverrides[id]` leaves beside the installed
+ *   catalog (overrides beside a non-empty `models` list are refused at write).
+ * - `inherited-models`: models exist only in an inherited layer, or a
+ *   declared route declares none at all yet; nothing here may be written.
+ */
+export type CapabilityWriteMode = 'declared-models' | 'catalog-overrides' | 'inherited-models'
+
+/** Derive one row's write mode from the namespace layers and the directory entry. */
+export function writeModeOf(
+  namespace: SettingsNamespaceView,
+  entry: ConfigurableProviderView,
+): CapabilityWriteMode {
+  // A hand-declared route owns its list the moment the key exists, empty or
+  // not. A catalog route is different: the adapter treats user `models: []`
+  // as no list (it serves the installed catalog, and overrides beside an
+  // empty list stay legal) — so only a non-empty user list narrows it.
+  if (entry.declared !== false) {
+    return userOwnsModels(namespace, entry.settingsPath) ? 'declared-models' : 'inherited-models'
+  }
+  if (userOwnsNonEmptyModels(namespace, entry.settingsPath)) return 'declared-models'
+  if (profileModels(namespace, entry.settingsPath).length === 0) return 'catalog-overrides'
+  return 'inherited-models'
+}
+
 /** One row of the capabilities page. */
 export interface CapabilityRowView {
   /** Route facts from the directory. */
   entry: ConfigurableProviderView
   /** Whether any layer configures this provider (its profile resolves). */
   configured: boolean
-  /** The route's effective model entries; display only. */
+  /** The route's effective model entries (empty for a catalog-overrides row). */
   models: Record<string, unknown>[]
-  /** Whether this row (a declared route) owns its models array in the user layer. */
-  declaredEditable: boolean
+  /** Where this row's capability edits persist. */
+  writeMode: CapabilityWriteMode
+  /** User-layer `modelOverrides` of a catalog-overrides row, keyed by model id. */
+  overrides: Record<string, Record<string, unknown>>
 }
 
 /** The snapshot the section renders. */
@@ -194,13 +248,15 @@ export interface CapabilitiesState {
   namespace: SettingsNamespaceView | undefined
   /** Configured pi-ai providers joined with their profile models. */
   rows: readonly CapabilityRowView[]
+  /** Dormant catalog routes: installed, not yet configured, one write from onboarding. */
+  dormant: readonly CapabilityRowView[]
   /** Schema-derived reasoning levels vocabulary. */
   levels: readonly string[]
   /** Schema-derived request modalities vocabulary. */
   modalities: readonly string[]
 }
 
-/** A tiny snapshot store: one value, subscribe/getSnapshot, notify on set. */
+/** A tiny snapshot store: one value, subscribe/getSnapshot, notify on set. (Exported: it lands in the controller's public type surface.) */
 export interface SnapshotStore<T> {
   getSnapshot(): T
   setSnapshot(next: T): void
@@ -237,6 +293,7 @@ export class CapabilitiesController {
     writable: true,
     namespace: undefined,
     rows: [],
+    dormant: [],
     levels: [],
     modalities: [],
   })
@@ -258,6 +315,30 @@ export class CapabilitiesController {
     this.generation += 1
     this.activeAbort?.abort()
     this.activeAbort = undefined
+    this.discoveries.clear()
+  }
+
+  /** Memoized official-catalog discovery per provider; lazily asked on manage-click. */
+  private readonly discoveries = new Map<string, Promise<readonly DiscoveredModelView[]>>()
+
+  /**
+   * Ask the configuration-time discovery seam for one catalog route's
+   * installed models. A catalog provider answers from the installed catalog
+   * itself — before any endpoint, protocol, or credential work — so this
+   * stays callable even when the route's baseURL is dead. A rejected ask is
+   * not cached: the next click asks again.
+   */
+  discoverOfficialModels(provider: string): Promise<readonly DiscoveredModelView[]> {
+    if (this.disposed) return Promise.reject(new Error('better-model-provider: controller disposed'))
+    const existing = this.discoveries.get(provider)
+    if (existing !== undefined) return existing
+    const pending = this.api.llm.discoverModels({ settingsNs: PI_AI_NS, provider })
+      .then(response => unwrap(response).models)
+    this.discoveries.set(provider, pending)
+    void pending.catch(() => {
+      if (this.discoveries.get(provider) === pending && !this.disposed) this.discoveries.delete(provider)
+    })
+    return pending
   }
 
   /**
@@ -268,6 +349,10 @@ export class CapabilitiesController {
   load(): Promise<void> {
     if (this.disposed) return Promise.resolve()
     const generation = ++this.generation
+    // A generation advance means the join changed: catalog snapshots memoized
+    // from an older generation may contradict freshly reloaded overrides —
+    // they are cheap enough to ask again on the next manage click.
+    this.discoveries.clear()
     this.activeAbort?.abort()
     const abort = new AbortController()
     this.activeAbort = abort
@@ -305,21 +390,25 @@ export class CapabilitiesController {
         .map(entry => ({
           entry,
           configured: namespace !== undefined && hasPath(namespace.value ?? {}, entry.settingsPath),
-          declaredEditable: namespace !== undefined
-            && entry.declared === true
-            && userOwnsModels(namespace, entry.settingsPath),
           models: namespace === undefined ? [] : profileModels(namespace, entry.settingsPath),
+          writeMode: namespace === undefined ? 'inherited-models' as const : writeModeOf(namespace, entry),
+          overrides: namespace === undefined ? {} : profileOverrides(namespace, entry.settingsPath, 'user'),
         }))
       this.store.setSnapshot({
         status: 'ready',
         error: null,
         writable: settings.writable,
         namespace,
-        // Declared routes only: capability editing happens on the models the
-        // user declares. Catalog routes and routes the adapter cannot classify
-        // never enter the page — their capability fields are not this editor's
-        // product.
-        rows: joined.filter(row => row.configured && row.entry.declared === true),
+        // Every classifiable configured route appears: declared routes edit
+        // their own models[]; catalog routes overlay the installed catalog
+        // with sparse modelOverrides. Routes the adapter cannot classify
+        // (declared undefined) carry no persistence story and never appear.
+        rows: joined.filter(row => row.configured && row.entry.declared !== undefined),
+        // Dormant catalog routes wait one click away: the directory already
+        // carries every installed catalog provider, and the first override
+        // write materializes the profile — no bootstrap document, no key
+        // handling here.
+        dormant: joined.filter(row => !row.configured && row.entry.declared === false),
         ...extractCapabilityVocabulary(namespace),
         
       })

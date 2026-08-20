@@ -35,7 +35,6 @@
   "files": [
     "lib/",
     "cordis.patch.yml",
-    "docs/",
     "README.md",
     "README.zh.md",
     "CHANGELOG.md",
@@ -64,10 +63,10 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "oxlint src tests scripts",
-    "prepare": "npm run build",
     "verify:pack": "node scripts/verify-pack.mjs",
     "test:live": "vitest run tests/integration.live.spec.ts --coverage.enabled=false",
-    "test:functional": "vitest run tests/functional.live.spec.ts --coverage.enabled=false"
+    "test:functional": "vitest run tests/functional.live.spec.ts --coverage.enabled=false",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.7",

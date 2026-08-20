@@ -18,13 +18,13 @@ import { defaultArrangement, scriptedFace } from './helpers.ts'
 function fakeCtx(api: IRemoteApi): {
   ctx: ClientShim
   effects: { fn: () => unknown; name: string | undefined }[]
-  remotes: { event: string; handler: (payload: unknown) => void }[]
+  remotes: { event: string; handler: (...args: readonly unknown[]) => void }[]
   registrations: { options: Record<string, unknown>; component: unknown }[]
   binds: string[]
   dictionaries: { ns: string; dictionaries: Record<string, Record<string, string>> }[]
 } {
   const effects: { fn: () => unknown; name: string | undefined }[] = []
-  const remotes: { event: string; handler: (payload: unknown) => void }[] = []
+  const remotes: { event: string; handler: (...args: readonly unknown[]) => void }[] = []
   const registrations: { options: Record<string, unknown>; component: unknown }[] = []
   const binds: string[] = []
   const dictionaries: { ns: string; dictionaries: Record<string, Record<string, string>> }[] = []
@@ -40,14 +40,15 @@ function fakeCtx(api: IRemoteApi): {
       inject: (_slot, register) => {
         const result = register()
         if (typeof result === 'function') result()
+        return () => {}
       },
       register: (options, component) => { registrations.push({ options: options as unknown as Record<string, unknown>, component }); return () => {} },
     },
-    remote: { $on: (event, handler) => { remotes.push({ event, handler }); return () => {} } },
+    remote: { $on: (event, handler) => { remotes.push({ event, handler: handler as (...args: readonly unknown[]) => void }); return () => {} } },
     connection: { api },
     effect: (fn, name) => { effects.push({ fn, name }) },
     on: (event, handler) => {
-      remotes.push({ event, handler: handler as (payload: unknown) => void })
+      remotes.push({ event, handler })
       return () => {}
     },
   }

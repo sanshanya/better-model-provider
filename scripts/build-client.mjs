@@ -28,7 +28,9 @@ await build({
   jsx: 'automatic',
   jsxImportSource: 'react',
   target: 'es2020',
-  sourcemap: true,
+  // No sourcemap: the map with embedded sources outweighs the bundle 4×,
+  // and debugging happens against the TSX sources in-repo, not the artifact.
+  sourcemap: false,
   minify: true,
   external: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client'],
   outfile: 'lib/client.js',
@@ -36,9 +38,7 @@ await build({
   footer: { js: FOOTER },
 })
 
-// The wrapper must carry a sourcemap-aware sourceMappingURL matching
-// esbuild's own comment. esbuild already emits the comment; nothing else is
-// required. Read back for an early sanity check the wrapper survived.
+// Read back for an early sanity check the wrapper survived.
 const content = await readFile('lib/client.js', 'utf8')
 if (!content.startsWith('window.__ModuleLoader__.load({')) {
   throw new Error('client bundle wrapper missing __ModuleLoader__.load preamble')

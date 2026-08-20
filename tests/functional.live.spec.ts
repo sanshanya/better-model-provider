@@ -20,6 +20,16 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
 
   const settingsYaml = (): string => readFileSync(join(boot.dshHome, 'settings.yaml'), 'utf8')
 
+  /** Poll the persisted settings document until a predicate holds (async writes race a single read). */
+  async function waitForYaml(predicate: (yaml: string) => boolean): Promise<void> {
+    const start = Date.now()
+    while (Date.now() - start < 60_000) {
+      if (predicate(settingsYaml())) return
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+    throw new Error(`settings.yaml never reached the expected state; it reads:\n${settingsYaml()}`)
+  }
+
   beforeAll(async () => {
     boot = await liveBoot({
       seeds: {
@@ -35,6 +45,11 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
           '      models:',
           '        - id: Kimi-K3',
           '          name: Kimi-k3',
+          // A catalog route on a dead proxy baseURL: its discovery must come
+          // from the installed catalog, never from this endpoint.
+          '    openai:',
+          '      apiKeyEnv: BMP_FUNC_KEY',
+          '      baseURL: http://127.0.0.1:1/v1',
           '',
         ].join('\n'),
       },
@@ -104,7 +119,7 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     // click, killing the toggled node on a detached button — retry the
     // toggle bounded instead of trusting one click.
     const wrap = await page
-      .waitForSelector('.bmp-msWrap button[aria-haspopup="true"]', { visible: true })
+      .waitForSelector('.bmp-msWrap button[aria-haspopup="dialog"]', { visible: true })
       .catch(async () => {
         const dump = await page.evaluate(() =>
           [...document.querySelectorAll('button, select')]
@@ -123,10 +138,14 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     throw new Error('reasoning picker never opened its panel after 4 toggles')
   }
 
-  /** Type into one capacity field (by aria-label) of the expanded row. */
-  async function typeCapacity(needles: readonly string[], text: string): Promise<void> {
-    const found = await page.evaluate((list, value) => {
-      for (const input of document.querySelectorAll('.bmp-input')) {
+  /** Type into one capacity field (by aria-label) of the expanded row, optionally scoped to one provider card. */
+  async function typeCapacity(needles: readonly string[], text: string, provider?: string): Promise<void> {
+    const found = await page.evaluate((list, value, name) => {
+      const roots: ParentNode[] = name === undefined
+        ? [document]
+        : [...document.querySelectorAll('.bmp-card')].filter(card =>
+            card.querySelector('.bmp-cardMeta')?.textContent?.trim() === name)
+      for (const root of roots) for (const input of root.querySelectorAll('.bmp-input')) {
         const aria = input.getAttribute('aria-label') ?? ''
         if (list.some(needle => aria.includes(needle))) {
           const el = input as HTMLInputElement
@@ -137,15 +156,43 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
         }
       }
       return false
-    }, [...needles], text)
+    }, [...needles], text, provider)
     if (!found) throw new Error(`no capacity input matches ${needles.join(',')}`)
     await new Promise(resolve => setTimeout(resolve, 200))
   }
 
-  /** Click the first match whose accessible text contains a needle — locale-proof over both dictionaries. */
-  async function clickWithText(selector: string, needles: readonly string[]): Promise<void> {
-    const found = await page.evaluate((sel, list) => {
-      for (const el of document.querySelectorAll(sel)) {
+  /** Expand the first model row of the card whose meta names one provider. */
+  async function expandCardRow(provider: string): Promise<void> {
+    const ok = await page.evaluate(name => {
+      for (const card of document.querySelectorAll('.bmp-card')) {
+        if (card.querySelector('.bmp-cardMeta')?.textContent?.trim() !== name) continue
+        const row = card.querySelector('.bmp-modelRow')
+        if (!row) return false
+        if (!row.querySelector('.bmp-modelAdvanced')) {
+          (row.querySelector('.bmp-modelMain .bmp-icon') as HTMLButtonElement | null)?.click()
+        }
+        return true
+      }
+      return false
+    }, provider)
+    if (!ok) {
+      const cards = await page.evaluate(() =>
+        [...document.querySelectorAll('.bmp-card')]
+          .map(card => `${card.querySelector('.bmp-cardMeta')?.textContent?.trim() ?? '?'}[rows=${card.querySelectorAll('.bmp-modelRow').length}]`)
+          .join(' '))
+      throw new Error(`no card with a model row for provider "${provider}"; cards: ${cards}; yaml:\n${settingsYaml()}`)
+    }
+    await page.waitForSelector('.bmp-modelAdvanced', { visible: true })
+  }
+
+  /** Click the first match whose accessible text contains a needle — locale-proof over both dictionaries, optionally scoped to one provider card. */
+  async function clickWithText(selector: string, needles: readonly string[], provider?: string): Promise<void> {
+    const found = await page.evaluate((sel, list, name) => {
+      const roots: ParentNode[] = name === undefined
+        ? [document]
+        : [...document.querySelectorAll('.bmp-card')].filter(card =>
+            card.querySelector('.bmp-cardMeta')?.textContent?.trim() === name)
+      for (const root of roots) for (const el of root.querySelectorAll(sel)) {
         const aria = el.getAttribute('aria-label') ?? ''
         const title = el.getAttribute('title') ?? ''
         const parentTitle = el.closest('[title]')?.getAttribute('title') ?? ''
@@ -156,7 +203,7 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
         }
       }
       return false
-    }, selector, [...needles])
+    }, selector, [...needles], provider)
     if (!found) {
       const html = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('.bmp-modelRow')]
@@ -246,5 +293,75 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     await clickWithText('button', ['应用', 'Apply'])
     await page.waitForFunction(() => !document.querySelector('.bmp-staged'), { timeout: 60_000 })
     expect(settingsYaml()).not.toContain('contextWindow: 380000')
+  })
+
+  test('a catalog override persists into settings.yaml, and resetting lifts it', { timeout: 180_000 }, async () => {
+    // Runs LAST: earlier tests leave the declared row open and DOM ordering
+    // puts catalog cards first, so capacity typing lands on the official row.
+    // The dead proxy baseURL must not matter: the manage gate's discovery
+    // comes from the installed catalog, so the official list renders anyway.
+    await clickWithText('button', ['管理官方模型', 'Manage official models'])
+    await page.waitForSelector('.bmp-modelRow', { visible: true, timeout: 60_000 })
+    await expandCardRow('openai')
+    // Official capacity baselines render — the installed catalog answers them.
+    await page.waitForFunction(
+      () => document.body.textContent?.includes('官方：') === true || document.body.textContent?.includes('Official:') === true,
+      { timeout: 60_000 },
+    )
+    await typeCapacity(['Context window', '上下文窗口'], '64K')
+    await clickWithText('button', ['应用', 'Apply'], 'openai')
+    await waitForYaml(yaml => yaml.includes('modelOverrides:') && yaml.includes('contextWindow: 64000'))
+
+    await clickWithText('button', ['还原为官方默认', 'Reset to official defaults'], 'openai')
+    await waitForYaml(yaml => !yaml.includes('contextWindow: 64000'))
+  })
+
+  test('a dormant catalog route onboards on its first override write', { timeout: 180_000 }, async () => {
+    // Anthropic ships in the installed catalog but nothing seeds a profile
+    // for it: it waits collapsed behind the add button, manages from the
+    // installed catalog, and the first override write materializes the route
+    // in settings.yaml even though no credential exists.
+    expect(settingsYaml()).not.toContain('anthropic:')
+    await clickWithText('button', ['管理官方供应商', 'Manage official providers'])
+    // The region lists one compact row per provider; picking it unfolds the card.
+    const rowFound = await page.evaluate(() => {
+      for (const el of document.querySelectorAll('.bmp-dormantRow')) {
+        if (el.querySelector('.bmp-cardMeta')?.textContent?.trim() === 'anthropic') {
+          (el as HTMLElement).click()
+          return true
+        }
+      }
+      return false
+    })
+    if (!rowFound) throw new Error('no dormant row for anthropic')
+    await clickWithText('button', ['管理官方模型', 'Manage official models'])
+    await page.waitForFunction(name =>
+      [...document.querySelectorAll('.bmp-card')].some(card =>
+        card.querySelector('.bmp-cardMeta')?.textContent?.trim() === name
+        && card.querySelector('.bmp-modelRow') !== null),
+    { timeout: 60_000 }, 'anthropic')
+    await expandCardRow('anthropic')
+    await typeCapacity(['Context window', '上下文窗口'], '64K', 'anthropic')
+    await clickWithText('button', ['应用', 'Apply'], 'anthropic')
+    await waitForYaml(yaml => yaml.includes('anthropic:') && yaml.includes('contextWindow: 64000'))
+    // The first write configures the route: the card jumps from the dormant
+    // region into the configured list, re-mounting with its manage gate
+    // closed — manage it again before the row shows.
+    await clickWithText('button', ['管理官方模型', 'Manage official models'])
+    await page.waitForFunction(name =>
+      [...document.querySelectorAll('.bmp-card')].some(card =>
+        card.querySelector('.bmp-cardMeta')?.textContent?.trim() === name
+        && card.querySelector('.bmp-modelRow') !== null),
+    { timeout: 60_000 }, 'anthropic')
+    await expandCardRow('anthropic')
+    await clickWithText('button', ['还原为官方默认', 'Reset to official defaults'], 'anthropic')
+    await waitForYaml(yaml => !yaml.includes('contextWindow: 64000'))
+    // Full closure: the onboarding-minted shell profile lifts with the last
+    // override — the route returns to the dormant list, no ghost `{}` active.
+    await waitForYaml(yaml => !yaml.includes('anthropic:'))
+    await page.waitForFunction(
+      name => [...document.querySelectorAll('.bmp-dormantRow')].some(row =>
+        row.querySelector('.bmp-cardMeta')?.textContent?.trim() === name),
+      { timeout: 60_000 }, 'anthropic')
   })
 })
