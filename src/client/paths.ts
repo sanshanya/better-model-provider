@@ -32,6 +32,13 @@ export function hasPath(value: unknown, path: readonly string[]): boolean {
   return key in parent
 }
 
+/** The only structural fields a rehydrated node tree exposes to this walk. */
+interface SchemaProbe {
+  type?: string
+  dict?: Record<string, unknown>
+  inner?: unknown
+}
+
 /**
  * Walk a rehydrated schemastery node tree by path: object children by name,
  * dict and array through `inner`.
@@ -42,10 +49,10 @@ export function nodeAtPath(root: unknown, path: readonly string[]): unknown {
     // Schemastery nodes are CALLABLE validators: `typeof node === 'function'`,
     // not 'object'. Rejecting functions here was the fail-closed path that
     // silently emptied every vocabulary in the live harness.
-    const fnNode = typeof node === 'function' ? node as unknown as { type?: string; dict?: Record<string, unknown>; inner?: unknown } : node as { type?: string; dict?: Record<string, unknown>; inner?: unknown } | null
-    if (fnNode === null || (typeof fnNode !== 'object' && typeof fnNode !== 'function')) return undefined
-    if (fnNode.type === 'object' && fnNode.dict !== undefined) node = fnNode.dict[key]
-    else if (fnNode.type === 'dict' || fnNode.type === 'array') node = fnNode.inner
+    if (node === null || (typeof node !== 'object' && typeof node !== 'function')) return undefined
+    const probe = node as SchemaProbe
+    if (probe.type === 'object' && probe.dict !== undefined) node = probe.dict[key]
+    else if (probe.type === 'dict' || probe.type === 'array') node = probe.inner
     else return undefined
   }
   return node

@@ -1,69 +1,38 @@
 # better-model-provider
 
-为 DeepSeek Harness（dsh）提供了更好的自定义供应商模型接入，支持**原生**视觉输入、按模型声明推理强度，以及按模型设置 token 容量（上下文窗口 / 最大输出）。
+为 DeepSeek Harness 提供按模型的能力编辑：推理强度档位（含取值拼写）、请求模态与 token 容量——自定义路由上编辑声明，官方目录路由上编辑稀疏覆盖。
 
-[English](README.md) | 中文
+**自定义模型：编辑声明。官方模型：编辑覆盖。供应商配置仍归官方。**
 
-![用插件编辑一个模型行的界面](docs/screenshot.png)
+[English](README.md)
 
-## **为什么需要它**
+![编辑一个模型行](https://raw.githubusercontent.com/sanshanya/better-model-provider/main/docs/screenshot.png)
 
-官方的「模型」设置页能管理提供方和模型行，但两个按模型的能力字段一直只能手写 YAML：`reasoningEfforts`（模型接受哪些推理档位、每档发往端点的拼写）和 `input`（模型接受哪些请求模态）。本页编辑这两项，**外加**按模型的 token 容量（`contextWindow` / `maxTokens`）——作用在你声明的模型上——一个模型在一行里配完。能力字段不声明的话：
+## 为什么
 
-- 会话输入框的模型选择器不会为你的模型显示推理强度控件；
-- 含图片的会话切换模型时会被拦下（`Model ... does not accept image input`），因为手工声明的模型默认纯文本。
+`reasoningEfforts` 与 `input` 这两个按模型字段此前只能手写 YAML：不声明，选择器就没有强度控件，图像会话还会拒收该模型（`... does not accept image input`)。本页把这两个字段连同 `contextWindow` / `maxTokens` 一起纳入编辑——一行配好一个模型。
 
-## **安装**
+## 安装
 
-```
-# 从 GitHub：
-dsh plugin --profile web add github:sanshanya/better-model-provider
+    dsh plugin --profile web add github:sanshanya/better-model-provider
 
-# 本地联调（先构建——link: 规格按原样挂载）：
-npm install && npm run build
-dsh plugin --profile web add link:<本仓库绝对路径>
-```
+GitHub 方式安装会提示先为 pnpm 增加一个 `allowBuilds` 键，按提示添加后重跑 `add`。本地 `link:` 安装须先 `npm install && npm run build`。重启 `dsh web`，设置侧栏即现「模型能力」。
 
-GitHub 安装有一个**构建脚本门槛**：`github:` 规格只拉取源码——`lib/` 由本包的 `prepare` 构建——而 dsh 组包所用的 pnpm 默认不执行 git 依赖的构建脚本。安装器会打印需要放行的确切 key，把它加进该 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds` 下，然后重跑 `add` 命令。
+    dsh plugin --profile web rm better-model-provider
 
-重启 `dsh web`，硬刷浏览器，设置侧边栏会出现「模型能力」。卸载：
+## 使用
 
-```
-dsh plugin --profile web rm better-model-provider
-```
+1. 先在官方「模型」页配置供应商与 API 密钥；密钥与生命周期永远不出走本页。
+2. 展开某行：推理强度选「自定义」并勾选档位（需要 Off 就再勾 `off`，取值留空 → `null`)；视觉模型在输入模态里勾 `image`；容量支持 K/M 写法（`380K`、`1M`)。应用后选择器与图像准入立即生效。
+3. 官方目录路由：点击「管理官方模型」——每个字段只写一个稀疏 `modelOverrides` 叶子；官方容量基线除非覆盖否则不动；推理取值绝不替你猜；「还原为官方默认」恰好摘掉你覆盖过的叶子。
+4. 「管理官方供应商（N）」列出每个驻装的目录路由；点选其一，你应用的第一个覆盖即会创建它的 profile。
 
-## **使用**
+内置的「DeepSeek」「OpenAI Codex」等专属适配器应用在其适配器代码中声明能力，不会出现在本页。
 
-1. 先在官方「模型」页把提供方配好（API 密钥在那边管理，本页不碰凭据）。
-2. 打开 **设置 → 模型能力**。
-3. 展开模型行：推理强度选「自定义」并勾选档位；视觉模型把输入模态的 `image` 勾上；提供方默认值不对时直接填上下文窗口 / 最大输出 token（支持 `380K`、`1M` 写法）。提供方和模型的生命周期仍由官方「模型」页负责。
-4. 应用。选择器立即只提供所声明的档位，宿主机图像准入同步放行。
+## 兼容性
 
-小提示：只勾 `{ high }` 选择器就只有 High；再补勾 `off`（取值为空 → `null`）才有 Off 可选。
+契约线 `@deepseek-ai/dsh-api-remotes ^0.1.0-rc.7`（已对发布版 harness 实证）；契约之外的能力面静默降级。开发门禁、live 车道与不变式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## **开发**
-
-```
-npm install
-npm run build            # lib/index.js + lib/client.js（模块加载器形态 bundle）
-npm test                 # 单元 + 交互流 + bundle 冒烟
-npm run test:coverage    # v8 每文件 100% 行/函数/语句，95% 分支
-npm run lint; npm run typecheck
-npm run verify:pack      # npm pack + 装进空项目消费者 + tsc 探针
-
-# 真实 Harness 门禁（需要本地 DeepSeek Harness 仓库）：
-BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live          # 集成
-BMP_DSH_DIR=/path/to/deepseek-harness \
-BMP_CHROME_PATH="/path/to/chromium" \
-  npm run test:functional    # 真实浏览器驱动一次真实写入 settings.yaml
-```
-
-CI 在每次推送跑封闭门禁（`ci` workflow），每晚 + 手动触发跑两条真实 harness 车道（`live` workflow），命令与上面一致。
-
-## **兼容性**
-
-已对照 master 提交 `47f943859b` 的 DeepSeek Harness 检出验证（2026-08-13）。当前发布线为 `0.1.0-rc.7`（npm 真实祖先：rc.2 → rc.3 → rc.6 → rc.7——0.1.0 线没有过 rc.4/rc.5），夜间 live 车道用真实浏览器直接起该线；本地开发以 devDependency `^0.1.0-rc.7` 跟随，typecheck 即漂移仲裁。已知最低可用契约即该提交所服务的：`settings.describe/mutate`、`llm.providers`、`{ rpcId, result }` envelope、模型行 schema。涉及内部界面面（settings.section 注册形态）的部分按 experimental compatibility 对待：更新版本若不服务该面，插件会静默降级而不是破坏页面。
-
-## **License**
+## 许可证
 
 MIT

@@ -118,6 +118,47 @@ export const STYLES = `
   flex-direction: column;
   gap: 4px;
 }
+.bmp-officialHint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, rgba(0, 0, 0, 0.45));
+}
+.bmp-catalogBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 8px;
+}
+.bmp-dormant {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+.bmp-dormantList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.bmp-dormantRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--dsh-border);
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.bmp-dormantRow:hover,
+.bmp-dormantRow[aria-expanded="true"] {
+  background-color: color-mix(in srgb, currentColor 6%, transparent);
+}
 .bmp-toggle,
 .bmp-msItemCheck {
   display: inline-flex;
