@@ -1,9 +1,10 @@
 /**
  * Recapture docs/screenshot.png against the RUNNING GUI (default
  * http://127.0.0.1:3080): open the settings dialog, select our section,
- * expand the first model row, and shoot the viewport. Real page state beats
- * a mockup — this is the only honest way the shipped image exists.
- *   node scripts/capture-screenshot.mjs [url] [outPng]
+ * expand a model row (default: the row whose card meta is `rowProvider`),
+ * and shoot the viewport. Real page state beats a mockup — this is the only
+ * honest way the shipped image exists.
+ *   node scripts/capture-screenshot.mjs [url] [outPng] [rowProvider]
  * Needs BMP_CHROME_PATH (or a Chrome at the usual install spots).
  */
 import { existsSync } from 'node:fs'
@@ -12,6 +13,8 @@ import puppeteer from 'puppeteer-core'
 
 const url = process.argv[2] ?? 'http://127.0.0.1:3080'
 const out = process.argv[3] ?? join(process.cwd(), 'docs', 'screenshot.png')
+/** Provider whose card row expands in the shot (falls back to the first row). */
+const rowProvider = process.argv[4]
 
 const candidates = [
   process.env['BMP_CHROME_PATH'],
@@ -47,7 +50,22 @@ try {
   // The settings modal's left nav announces our section by its registered label.
   await clickWithText(page, '[role="dialog"] button', ['模型能力', 'Model capabilities'])
   await page.waitForSelector('.bmp-modelRow', { visible: true })
-  await clickWithText(page, '.bmp-modelRow button', ['expand', '展开'])
+  if (rowProvider !== undefined) {
+    const found = await page.evaluate(name => {
+      for (const card of document.querySelectorAll('.bmp-card')) {
+        if (card.querySelector('.bmp-cardMeta')?.textContent?.trim() !== name) continue
+        const button = card.querySelector('.bmp-modelRow button')
+        if (button !== null) {
+          button.click()
+          return true
+        }
+      }
+      return false
+    }, rowProvider)
+    if (!found) throw new Error(`no model row under provider card ${rowProvider}`)
+  } else {
+    await clickWithText(page, '.bmp-modelRow button', ['expand', '展开'])
+  }
   await page.waitForSelector('.bmp-modelAdvanced', { visible: true })
   // Settle: the join re-render after expansion can reflow the card once.
   await new Promise(resolve => setTimeout(resolve, 400))
