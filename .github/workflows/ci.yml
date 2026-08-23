@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 permissions:
@@ -23,3 +23,56 @@ jobs:
       - run: npm run test:coverage
       - run: npm run build
       - run: npm run verify:pack
+      - name: upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: lib/
+          if-no-files-found: error
+
+  publish:
+    # 门禁全绿后把构建产物覆盖到 master 分支；用户端以
+    # github:<owner>/<repo>#master 安装时不再需要本地放行构建。
+    # master 上只保留可安装内容（lib/ 与包元数据），不带源码与测试。
+    if: github.event_name == 'push'
+    needs: gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # 串行化推送，避免两次 main 推送同时写 master 造成非快进失败。
+    concurrency:
+      group: publish-master
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: lib/
+      - name: assemble publishable tree
+        run: |
+          mkdir ../publish
+          mv lib ../publish/lib
+          cp package.json cordis.patch.yml README.md README.zh.md CHANGELOG.md LICENSE ../publish/
+      - name: overwrite master branch with build output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin master || true
+          if git rev-parse -q --verify refs/remotes/origin/master >/dev/null 2>&1; then
+            git checkout -B staging refs/remotes/origin/master
+          else
+            git checkout --orphan staging
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a ../publish/. .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "build output unchanged, nothing to publish"
+            exit 0
+          fi
+          git commit -m "chore: 发布构建产物 (${{ github.sha }})"
+          git push origin staging:master
