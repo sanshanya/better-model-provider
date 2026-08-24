@@ -14,9 +14,9 @@ Two per-model fields stayed YAML-only: `reasoningEfforts` and `input`. Until dec
 
 ## Install
 
-    dsh plugin --profile web add github:sanshanya/better-model-provider
+    dsh plugin --profile web add github:sanshanya/better-model-provider#master
 
-GitHub installs print one pnpm `allowBuilds` key to add, then rerun `add`. A local `link:` install must `npm install && npm run build` first. Restart `dsh web`, and the Settings sidebar gains **Model capabilities**.
+CI rebuilds and republishes ready-built artifacts to the `master` branch on every green main push, so this path never builds locally. Installing the default branch (`github:sanshanya/better-model-provider`) builds from source and prints one pnpm `allowBuilds` key to add, then rerun `add`; a local `link:` install must `npm install && npm run build` first. Restart `dsh web`, and the Settings sidebar gains **Model capabilities**.
 
     dsh plugin --profile web rm better-model-provider
 

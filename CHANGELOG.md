@@ -4,7 +4,24 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); the verification matrix each release was
 held to lives in `CONTRIBUTING.md`.
 
-## [Unreleased]
+## [0.0.2] - 2026-08-24
+
+- **Zero-build distribution.** CI publishes ready-built artifacts to the
+  `master` branch on every green main push: `dsh plugin --profile web add
+  github:sanshanya/better-model-provider#master` never runs a local build,
+  sidestepping the pnpm `allowBuilds` catch described for source installs.
+  The CI bundle matches a local `npm run build` byte-for-byte on the verified
+  commit.
+
+- **Promise shape corrected.** `@deepseek-ai/schemastery` is a build-time
+  asset only (esbuild bundles it into the client half; the runtime never
+  requires it): moved to `devDependencies` instead of `peerDependencies`.
+
+- **Boundary copy tracks rc.8's own settings pages.** The dedicated-adapter
+  note now names where those families genuinely declare capability (their
+  own settings pages — llm-deepseek's per-model `inputModalities` landed in
+  rc.8), since "in their adapter code" read stale the moment rc.8 shipped
+  configuration for it.
 
 - **Official catalog providers are now manageable (sparse capability
   overrides).** A configured catalog route shows an "official catalog"
