@@ -27,11 +27,11 @@ CI rebuilds and republishes ready-built artifacts to the `master` branch on ever
 3. Official-catalog routes: **Manage official models** — each field writes one sparse `modelOverrides` leaf; official capacities stay unless overridden; reasoning wire spellings are never guessed; **Reset to official defaults** lifts exactly what you overrode.
 4. **Manage official providers (N)** lists installed catalog routes; pick one and the first override you apply materializes its profile.
 
-Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare capabilities in their own adapter code and never appear here.
+Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare capabilities on their own settings pages and never appear here.
 
 ## Compatibility
 
-Contract line `@deepseek-ai/dsh-api-remotes ^0.1.0-rc.7` (verified against the published harness); surfaces outside the contract degrade silently. Development gates, live lanes, and invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contract line `@deepseek-ai/dsh-api-remotes ^0.1.0-rc.7`; real-harness lanes verified on rc.7, rc.8, and 0.1.1-rc.2. Surfaces outside the contract degrade silently. Development gates, live lanes, and invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
