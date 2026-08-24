@@ -1,0 +1,5 @@
+# Force LF everywhere; git normalizes on check-in and checks out LF.
+* text=auto eol=lf
+
+# Git can misdetect these as text; pin them as binary.
+*.png binary
