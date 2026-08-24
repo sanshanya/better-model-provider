@@ -31,7 +31,7 @@ CI 在 main 每次全绿后自动重建并发布成品到 `master` 分支，此�
 
 ## 兼容性
 
-契约线 `@deepseek-ai/dsh-api-remotes ^0.1.0-rc.7`；live 车道已在 rc.7、rc.8、0.1.1-rc.2 三个版本上实证。契约之外的能力面静默降级。开发门禁、live 车道与不变式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+我们声明兼容**整个 dsh 0.1.x 系**：契约 `@deepseek-ai/dsh-api-remotes >=0.1.0-rc.7 <0.2.0`，live 车道已在 rc.7、rc.8、0.1.1-rc.2 三个版本上实证。契约之外的能力面静默降级。开发门禁、live 车道与不变式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 
