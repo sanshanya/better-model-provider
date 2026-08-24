@@ -301,7 +301,13 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     // The dead proxy baseURL must not matter: the manage gate's discovery
     // comes from the installed catalog, so the official list renders anyway.
     await clickWithText('button', ['管理官方模型', 'Manage official models'])
-    await page.waitForSelector('.bmp-modelRow', { visible: true, timeout: 60_000 })
+    // Await a row INSIDE THE OPENAI CARD — a page-wide selector settles on the
+    // pre-existing ksyun row and races the slower first catalog discovery.
+    await page.waitForFunction(
+      name => [...document.querySelectorAll('.bmp-card')].some(card =>
+        card.querySelector('.bmp-cardMeta')?.textContent?.trim() === name
+        && card.querySelector('.bmp-modelRow') !== null),
+      { timeout: 60_000 }, 'openai')
     await expandCardRow('openai')
     // Official capacity baselines render — the installed catalog answers them.
     await page.waitForFunction(
