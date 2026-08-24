@@ -22,12 +22,15 @@ CI rebuilds and republishes ready-built artifacts to the `master` branch on ever
 
 ## Use
 
-1. Configure the provider + API key on the official **Models** page first; keys and lifecycle never move here.
-2. Expand a row: pick **Custom** under reasoning effort, check the levels (also check `off`, blank wire → `null`, if Off should exist); check `image` under input modalities for vision models; fill capacities in K/M spelling (`380K`, `1M`). Apply — the picker and image admission follow immediately.
-3. Official-catalog routes: **Manage official models** — each field writes one sparse `modelOverrides` leaf; official capacities stay unless overridden; reasoning wire spellings are never guessed; **Reset to official defaults** lifts exactly what you overrode.
-4. **Manage official providers (N)** lists installed catalog routes; pick one and the first override you apply materializes its profile.
+1. Configure the provider and API key on the official **Models** page first — keys and route lifecycle are always managed there; this page does not repeat them.
+2. Expand a model row and edit its capabilities:
+   - **Reasoning effort**: pick **Custom**, check the levels you need; to offer "off" too, check `off` (its wire value may stay blank).
+   - **Vision models**: check `image` under input modalities — otherwise sending an image to this model gets refused.
+   - **Capacities**: K/M spelling reads best (`380K`, `1M`). Tap Apply and the change takes effect at once.
+3. Official-catalog routes: tap **Manage official models** and edit. Every change here stores only the difference from the official default — everything else keeps following catalog updates; **Reset to official defaults** undoes all of one model's edits at once.
+4. **Manage official providers (N)** unfolds installed-but-unconfigured routes: pick one, apply the first change, and the route comes into being (its API key still goes on the official page).
 
-Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare capabilities on their own settings pages and never appear here.
+Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare their capabilities on their own settings pages and never appear here.
 
 ## Compatibility
 
