@@ -31,7 +31,7 @@ Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare capabilities o
 
 ## Compatibility
 
-Contract line `@deepseek-ai/dsh-api-remotes ^0.1.0-rc.7`; real-harness lanes verified on rc.7, rc.8, and 0.1.1-rc.2. Surfaces outside the contract degrade silently. Development gates, live lanes, and invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
+We declare compatibility with the whole **dsh 0.1.x line**: contract `@deepseek-ai/dsh-api-remotes >=0.1.0-rc.7 <0.2.0`, real-harness lanes verified on rc.7, rc.8, and 0.1.1-rc.2. Surfaces outside the contract degrade silently. Development gates, live lanes, and invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
