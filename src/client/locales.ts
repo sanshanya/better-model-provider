@@ -47,8 +47,8 @@ export const en = {
   inheritedRoute: 'inherited list',
   adapterBoundary:
     'Routes owned by dedicated adapters (lived under llm-deepseek / llm-openai-codex) declare '
-    + 'capabilities in their adapter code and never appear here; a pi-ai catalog route of the same '
-    + 'brand name is a different route and does appear.',
+    + 'capabilities on their own settings pages and never appear here; a pi-ai catalog route of the '
+    + 'same brand name is a different route and does appear.',
   inheritedModelList: 'This model list is inherited from the active composition and is read-only here.',
   readOnly: 'Settings are read-only in this view',
   expand: 'expand',
@@ -104,7 +104,7 @@ export const zh: Record<CapsKey, string> = {
   dormantHint: '尚未配置——你应用的第一个覆盖即会创建该 profile。API 密钥仍在官方「模型」页设置。',
   officialUserList: '官方·自管',
   inheritedRoute: '继承清单',
-  adapterBoundary: '专属适配器路由（如 llm-deepseek、llm-openai-codex 名下的）能力写在其适配器代码里，不会出现在本页；同品牌名的 pi-ai 目录路由是另一条路由，照常出现。',
+  adapterBoundary: '专属适配器路由（如 llm-deepseek、llm-openai-codex 名下的）能力在它们自己的设置页声明，不会出现在本页；同品牌名的 pi-ai 目录路由是另一条路由，照常出现。',
   inheritedModelList: '此模型列表继承自当前组装，本页只读。',
   readOnly: '此视图下设置为只读',
   expand: '展开',
