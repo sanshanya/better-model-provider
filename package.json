@@ -1,6 +1,6 @@
 {
   "name": "better-model-provider",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Per-model capability declaration for DeepSeek Harness: reasoning-effort levels (with wire spellings) and request modalities (text/image) for OpenAI-compatible providers — one settings section, no YAML hand-editing.",
   "license": "MIT",
   "repository": {

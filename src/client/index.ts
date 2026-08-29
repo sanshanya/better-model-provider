@@ -2,17 +2,19 @@
  * Model capabilities client half: registers one `settings.section` entry
  * backed by its own controller, keeps it fresh on every pushed invalidation
  * (settings, provider topology, connection reset), and owns the section's
- * stylesheet for the fiber lifetime.
+ * stylesheet for the fiber lifetime. Nothing registers until the harness
+ * Remote face is genuinely usable (see mount).
  *
  * @module better-model-provider/client
  */
 
 import { useSyncExternalStore } from 'react'
 import { CapabilitiesController, PI_AI_NS } from './store.ts'
+import { resolveRemoteApiGently } from './wire.ts'
 import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import type { CapabilitiesSectionInjected } from './CapabilitiesSection.tsx'
 import { en, zh, type CapsKey, type TFn } from './locales.ts'
-import type { ClientShim } from './types.ts'
+import type { ClientShim, IRemoteApi } from './types.ts'
 import { STYLES } from './styles.ts'
 
 /** Stable plugin id, matching the cordis.patch.yml row and the bundle id. */
@@ -32,11 +34,27 @@ export function refreshIfLoaded(controller: CapabilitiesController): void {
 }
 
 /**
- * Register the section, the copy dictionaries, the pushed-refresh wiring,
- * and the stylesheet; every contribution disposes with the plugin fiber.
+ * Defer ALL contribution until the harness Remote face resolves. dsh
+ * 0.1.2-alpha.1 mounts its `remote.<ns>` Cordis services SEQUENTIALLY and
+ * asynchronously — remote.settings lands before remote.llm — so a
+ * synchronous apply can observe the pair half-born; throwing (or registering
+ * a section whose controller cannot join) in that window fails the whole
+ * loader entry. The gentle resolver mounts as soon as the face completes and
+ * never throws.
  * @param ctx - client root context, narrowed to the services this plugin uses.
  */
 export function apply(ctx: ClientShim): void {
+  resolveRemoteApiGently(ctx, api => mount(ctx, api))
+}
+
+/**
+ * Register the section, the copy dictionaries, the pushed-refresh wiring,
+ * and the stylesheet; every contribution disposes with the plugin fiber.
+ * Runs exactly once, the first time the Remote face resolves.
+ * @param ctx - client root context, narrowed to the services this plugin uses.
+ * @param api - the resolved legacy-shaped Remote face (either generation).
+ */
+function mount(ctx: ClientShim, api: IRemoteApi): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'better-model-provider: dictionaries')
 
   const style = document.createElement('style')
@@ -45,7 +63,7 @@ export function apply(ctx: ClientShim): void {
   document.head.appendChild(style)
   ctx.effect(() => () => style.remove(), 'better-model-provider: stylesheet')
 
-  const controller = new CapabilitiesController(ctx.connection.api)
+  const controller = new CapabilitiesController(api)
   ctx.effect(() => () => controller.dispose(), 'better-model-provider: controller')
   const useSnapshot = (): ReturnType<CapabilitiesController['store']['getSnapshot']> =>
     useSyncExternalStore(
