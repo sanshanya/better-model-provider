@@ -15,7 +15,7 @@ import type { ClientShim } from '../src/client/types.ts'
 import { defaultArrangement, scriptedFace } from './helpers.ts'
 
 /** A fully scripted ClientShim whose seams the assertions read back. */
-function fakeCtx(api: IRemoteApi): {
+function fakeCtx(api?: IRemoteApi, services: Record<string, unknown> = {}): {
   ctx: ClientShim
   effects: { fn: () => unknown; name: string | undefined }[]
   remotes: { event: string; handler: (...args: readonly unknown[]) => void }[]
@@ -45,7 +45,10 @@ function fakeCtx(api: IRemoteApi): {
       register: (options, component) => { registrations.push({ options: options as unknown as Record<string, unknown>, component }); return () => {} },
     },
     remote: { $on: (event, handler) => { remotes.push({ event, handler: handler as (...args: readonly unknown[]) => void }); return () => {} } },
-    connection: { api },
+    // The dual-generation probe reads the scripted service table; callers
+    // with no alpha services exercise the legacy `connection.api` fallback.
+    get: (name: string) => services[name],
+    connection: api === undefined ? {} : { api },
     effect: (fn, name) => { effects.push({ fn, name }) },
     on: (event, handler) => {
       remotes.push({ event, handler })
@@ -149,6 +152,38 @@ describe('plugin entry', () => {
     const controllerEffect = effects.find(effect => effect.name === 'better-model-provider: controller')
     const disposeController = controllerEffect?.fn() as (() => void) | undefined
     disposeController?.()
+  })
+
+  test('a Remote face still mounting defers EVERY registration instead of throwing', () => {
+    // Master (0.1.2-alpha.1) mounts its `remote.<ns>` services one
+    // asynchronous namespace at a time — settings lands before llm — so an
+    // apply running in that window must WAIT rather than fail the loader
+    // entry (a throw here once bricked the whole client composition).
+    const services: Record<string, unknown> = {}
+    const { ctx, effects, remotes, registrations } = fakeCtx(undefined, services)
+    expect(() => apply(ctx)).not.toThrow()
+    expect(registrations).toHaveLength(0)
+    expect(document.head.querySelector('style[data-plugin="better-model-provider"]')).toBeNull()
+    // Only the face-await effect is registered; the retry rides Cordis's
+    // service-arrival event through the scripted `on` record.
+    expect(effects.map(effect => effect.name)).toEqual(['better-model-provider: remote face await'])
+    const waiter = remotes.find(subscription => subscription.event === 'internal/service')
+    expect(waiter).toBeDefined()
+
+    // Complete the assembly, then announce the final namespace: the whole
+    // contribution — stylesheet, dictionaries effect, slot — lands at once.
+    services['remote.settings'] = {
+      describe: () => Promise.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [] } }),
+      mutate: () => Promise.resolve({ ok: true, value: {} }),
+    }
+    services['remote.llm'] = {
+      listConfigurableProviders: () => Promise.resolve({ ok: true, value: [] }),
+      discoverModels: () => Promise.resolve({ ok: true, value: [] }),
+    }
+    waiter?.handler('remote.llm', {})
+    expect(registrations).toHaveLength(1)
+    expect(registrations[0]?.options['name']).toBe('settings.section')
+    expect(document.head.querySelector('style[data-plugin="better-model-provider"]')).not.toBeNull()
   })
 
   test('unrelated settings documents do not refresh the page', () => {

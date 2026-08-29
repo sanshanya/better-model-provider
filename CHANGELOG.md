@@ -4,6 +4,43 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); the verification matrix each release was
 held to lives in `CONTRIBUTING.md`.
 
+## [0.0.3] - 2026-08-29
+
+- **dsh 0.1.2-alpha.1 (source master) support, without dropping the npm line.**
+  master removed the `connection.api` bundle wholesale: the settings/llm
+  remotes now live as traced `remote.<ns>` Cordis services generated from
+  `TypertRemoteService`, and every call we make moved with them —
+  `settings.describe()` takes no payload, `settings.mutate(ns, ops,
+  expectedRevision)` goes positional, `llm.providers` was renamed
+  `listConfigurableProviders`, `llm.discoverModels(settingsNs, request,
+  signal)` hoists the namespace, and the envelope slims to
+  `{ok, value} | {ok, error}`. The new `src/client/wire.ts` probes the new
+  services first, adapts their shapes back to the legacy face, and falls
+  back to `connection.api` unchanged on the published rc line — page logic
+  speaks one face either way.
+
+- **Mounting is race-proof and never throws.** master mounts its Remote
+  namespaces sequentially (settings before llm), so a synchronous apply
+  meets the pair half-born — registration instead defers onto cordis
+  `internal/service` arrivals until the face genuinely completes. One
+  resolution path only, and it names the namespace actually awaited in
+  either mount order; a throwing section mount is contained (logged
+  once, the exactly-once latch holds, the listener unsubscribes) and can
+  never escape `apply()` into cordis's unguarded dispatch or brick the
+  web shell.
+
+- **Live lanes follow the web login gate and combo bundles.** master
+  prints a tokenized `dsh web` URL and gates page, bundles, and RPC on a
+  303 cookie exchange: the lanes capture the full URL, perform the
+  exchange, and carry the session cookie. The pre-auth line degrades to
+  plain traffic on the same code path, and the integration lane follows
+  the page's advertised rev-keyed combo URLs.
+
+- Verified: hermetic 213/218 (wire.ts 100% lines/branches/functions/
+  statements), and both live lanes against the real 0.1.2-alpha.1 master
+  checkout — schema-derived vocabulary, CAS write/revert round-trips,
+  catalog overrides, dormant-route onboarding; served bundle 56,510 bytes.
+
 ## [0.0.2] - 2026-08-24
 
 - **Zero-build distribution.** CI publishes ready-built artifacts to the

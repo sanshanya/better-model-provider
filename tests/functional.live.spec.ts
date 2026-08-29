@@ -65,7 +65,12 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     page.setDefaultTimeout(60_000)
     page.on('pageerror', error => console.log('PAGEERR', error instanceof Error ? error.message : String(error)))
     page.on('console', msg => { if (msg.type() === 'error') console.log('PGC', msg.text().slice(0, 200)) })
-    await page.goto(boot.url, { waitUntil: 'load', timeout: 120_000 })
+    // Enter through the URL exactly as printed: on a gated harness
+    // generation (master / ≥0.1.2-alpha.1) it carries the process token,
+    // the visit answers 303 onto '/' and plants the session cookie in
+    // this browser context — every later request rides it implicitly; on
+    // a pre-auth generation it is simply the app and renders directly.
+    await page.goto(boot.fullUrl, { waitUntil: 'load', timeout: 120_000 })
     // The SPA keeps a long-lived WebSocket, so networkidle never settles; the
     // real readiness marker is the rendered shell chrome.
     await page.waitForSelector('button, [role=button]', { visible: true, timeout: 60_000 })

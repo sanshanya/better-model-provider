@@ -14,7 +14,7 @@ import type {
   IApiClient, RpcError,
 } from '@deepseek-ai/dsh-api-remotes/client'
 
-export type { ConfigurableProviderView, DiscoveredModelView, RpcResponse, SettingsNamespaceView, SettingsPathOpView } from
+export type { ConfigurableProviderView, DiscoveredModelView, RpcError, RpcId, RpcResponse, SettingsNamespaceView, SettingsPathOpView } from
   '@deepseek-ai/dsh-api-remotes/client'
 
 /**
@@ -52,8 +52,12 @@ export interface IRemoteApi {
 
 /** The `connection` client service carrying the Remote faces. */
 export interface ConnectionFace {
-  /** Namespaced Remote proxies. */
-  api: IRemoteApi
+  /**
+   * Namespaced Remote proxies — present on dsh ≤0.1.1, ABSENT on
+   * 0.1.2-alpha.1+, where the same faces moved to the `remote.<ns>` Cordis
+   * services (the dual-generation seam in `wire.ts` probes both).
+   */
+  api?: IRemoteApi
 }
 
 /** Event disposer returned by any subscription call. */
@@ -101,7 +105,7 @@ export interface SlotsFace {
   register<I, O>(options: SlotRegistration<I>, component: (props: I & O) => unknown): Unsubscribe
 }
 
-/** Client-side effect/disposer seam used ftom the plugin's apply. */
+/** Client-side effect/disposer seam used from the plugin's apply. */
 export interface ClientEffectRegistrar {
   /** Register a side effect; its disposer runs on stop/unload. */
   effect(effect: () => Unsubscribe | void | Promise<Unsubscribe | void>, name?: string): void
@@ -111,6 +115,12 @@ export interface ClientEffectRegistrar {
 
 /** The client Cordis context as this plugin narrows it. */
 export interface ClientShim extends ClientEffectRegistrar {
+  /**
+   * Optional service lookup: the dynamic-plugin facade allows `ctx.get` for
+   * services NOT declared in inject — the dual-generation seam in `wire.ts`
+   * depends on it to probe `remote.<ns>` only where that service exists.
+   */
+  get(name: string): unknown
   /** Pushed-event and Remote seam. */
   remote: RemoteFace
   /** Connection seam with the Remote faces. */
