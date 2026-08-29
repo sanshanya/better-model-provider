@@ -22,25 +22,25 @@
  */
 import type { ClientShim, IRemoteApi } from './types.ts';
 /**
- * Resolve the Remote face this page speaks — STRICT variant: it throws when
- * neither generation answers or the alpha pair is incomplete. Correct for
- * callers that may fail loudly; the page mount path must NOT use it (a
- * synchronous apply can land inside the alpha's sequential-mount window, and
- * throwing there fails the whole loader entry — see resolveRemoteApiGently).
- * @param ctx - client root context (guarded dynamic facade).
- * @returns the legacy-shaped face whichever generation answers.
- */
-export declare function resolveRemoteApi(ctx: ClientShim): IRemoteApi;
-/**
  * Resolve the Remote face the PAGE speaks, gently: attempt once; if the
  * assembly is still mounting (dsh 0.1.2-alpha.1 mounts its Remote namespaces
  * SEQUENTIALLY — remote.settings lands before remote.llm, so a synchronous
  * apply can observe the pair half-born or not yet born), subscribe to
  * service arrivals and re-attempt until it completes, then `mount` exactly
- * once. NEVER throws: a face that never completes simply leaves the section
- * unregistered, with exactly ONE console warning — fired at the first
- * not-ready observation, whichever kind — so a permanently faceless harness
- * is diagnosable while boot-transient states never stack messages.
+ * once. This is the ONLY resolution variant, precisely because the mount
+ * path must NOT throw: a synchronous apply can land inside that sequential
+ * window, and throwing there fails the whole loader entry — registration
+ * defers instead. NEVER throws: a face that never completes simply leaves
+ * the section unregistered, with exactly ONE console warning — fired at the
+ * first not-ready observation, whichever kind — so a permanently faceless
+ * harness is diagnosable while boot-transient states never stack messages.
+ * The warned-once latch is single-fire even when sequential arrivals flip
+ * the awaited namespace mid-boot (remote.llm answering first, say): the
+ * first observation's line is the only one ever printed. A `mount` that
+ * throws is caught, logged ONCE via console.error, and latched done — the
+ * arrival listener still unsubscribes, later listeners on the same dispatch
+ * still fire (Cordis emits `internal/service` with no try/catch), and the
+ * failure never escapes this entry.
  * @param ctx - client root context (guarded dynamic facade).
  * @param mount - runs exactly once, the first time the face resolves.
  */

@@ -88,7 +88,7 @@ export interface SlotsFace {
      */
     register<I, O>(options: SlotRegistration<I>, component: (props: I & O) => unknown): Unsubscribe;
 }
-/** Client-side effect/disposer seam used ftom the plugin's apply. */
+/** Client-side effect/disposer seam used from the plugin's apply. */
 export interface ClientEffectRegistrar {
     /** Register a side effect; its disposer runs on stop/unload. */
     effect(effect: () => Unsubscribe | void | Promise<Unsubscribe | void>, name?: string): void;

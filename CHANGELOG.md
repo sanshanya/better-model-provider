@@ -4,6 +4,36 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); the verification matrix each release was
 held to lives in `CONTRIBUTING.md`.
 
+## [0.0.4] - 2026-08-29
+
+- **Review-cycle hardening of the dual-generation seam.** An adversarial
+  2+2+1 review (minimalism, minimalism, stability, equivalence) cut one
+  ceremonial layer and landed two robustness fixes:
+
+  - The STRICT resolver variant died: zero product callers, tree-shaken
+    out of the served bundle already, only tests consumed it. The gentle
+    resolver is now the single resolution path; its never-throws
+    invariant stands stated in one sentence.
+  - The boot diagnostic no longer lies in a reversed mount order: when
+    `remote.llm` answers before `remote.settings`, the old probe called
+    that state "no Remote face has arrived"; it now names the namespace
+    actually awaited.
+  - A throwing section mount can no longer escape into cordis's
+    unguarded event dispatch — starving neighboring listeners — nor out
+    of `apply()`: both mount attempts contain the failure, log once,
+    hold the exactly-once latch, and unsubscribe.
+
+- **Ceremony trimmed.** The synthetic envelope id is a constant (the
+  legacy frame requires the field; its uniqueness rides no consumer);
+  two unused LiveBoot members died with their interface entries; one
+  test's duplicated re-probe steps died to the test below them.
+
+- Verified: 213/218 hermetic with `wire.ts` at 100% statements, lines,
+  functions, AND branches; the served bundle is 56,510 bytes (+521, the
+  two robustness strings); all four functional tests re-passed on the
+  real 0.1.2-alpha.1 master checkout after the surgery (healthy-path
+  behavior unchanged).
+
 ## [0.0.3] - 2026-08-29
 
 - **dsh 0.1.2-alpha.1 (source master) support, without dropping the npm line.**
@@ -23,14 +53,13 @@ held to lives in `CONTRIBUTING.md`.
   synchronous apply threw in that window and bricked the whole web shell).
 
 - **Live lanes follow the web login gate and combo bundles.** master
-  prints a tokenized `dsh web` URL and gates page, bundles, and RPC on its
-  303 cookie exchange: the lanes capture the full URL, complete the
-  exchange, and carry the session cookie (the pre-auth line shares the
-  code path and degrades to plain traffic). The integration lane follows
-  the page's advertised rev-keyed combo URLs instead of the hard-coded
-  static path master's bundle server no longer answers.
+  prints a tokenized `dsh web` URL and gates page, bundles, and RPC on a
+  303 cookie exchange: the lanes capture the full URL, perform the
+  exchange, and carry the session cookie. The pre-auth line degrades to
+  plain traffic on the same code path, and the integration lane follows
+  the page's advertised rev-keyed combo URLs.
 
-- Verified: hermetic 212/217 (wire.ts 100% lines/branches/functions), and
+- Verified: hermetic 213/218 (wire.ts 100% lines/branches/functions), and
   both live lanes against the real 0.1.2-alpha.1 master checkout —
   schema-derived vocabulary, CAS write/revert round-trips, catalog
   overrides, dormant-route onboarding.
