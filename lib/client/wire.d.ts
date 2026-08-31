@@ -1,13 +1,14 @@
 /**
  * Dual-generation Remote adapter. dsh ≤0.1.1-rc.2 carries the settings/llm
- * namespaces on the `connection.api` face; dsh 0.1.2-alpha.1 (the current
- * harness master) installs them as traced `remote.<ns>` Cordis services whose
- * generated Typert proxies take positional arguments, rename `providers` to
- * `listConfigurableProviders`, and resolve the slimmer `RemoteResult`
- * envelope (no outer `rpcId`/`result` wrapper, values unboxed from their
- * `{providers}`/`{models}` carriers). The page logic keeps speaking ONE face
- * — {@link IRemoteApi}, the legacy published contract — so this module is the
- * only place in the plugin that knows both generations.
+ * namespaces on the `connection.api` face; dsh 0.1.2-alpha.1 installs them as
+ * traced `remote.<ns>` Cordis services whose generated Typert proxies take
+ * positional arguments, rename `providers` to `listConfigurableProviders`,
+ * and resolve the slimmer `RemoteResult` envelope (no outer `rpcId`/`result`
+ * wrapper, values unboxed from their `{providers}`/`{models}` carriers);
+ * 0.1.2-alpha.2 then wraps owner failures in `RemoteError` and rebadges the
+ * hyphen codes into slash namespaces. The page logic keeps speaking ONE face
+ * — {@link IRemoteApi}, the legacy published contract, with those renames
+ * folded back — so this module is the only place that knows both generations.
  *
  * The alpha-generation METHOD SIGNATURES are hand-projected here from the
  * generated clients in the harness checkout: the npm-published

@@ -4,6 +4,27 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); the verification matrix each release was
 held to lives in `CONTRIBUTING.md`.
 
+## [0.0.4] - 2026-08-31
+
+- **dsh 0.1.2-alpha.2 support.** The alpha folded owner failures into a
+  shared `RemoteError` class and rebadged the hyphenated wire codes into
+  slash namespaces — `settings-conflict` → `settings/conflict`,
+  `settings-rejected` → `settings/rejected`, `model-discovery-failed` →
+  `llm/model-discovery-rejected` — with every details payload unchanged.
+  The adapter now folds the rename back at the failure arm, so the CAS
+  conflict keeps its localized, actionable message; the copy is fieldwise
+  because the alpha's real `RemoteError` instance carries `message` as an
+  Error-inherited non-enumerable a spread would silently drop. All four
+  face methods are untouched; both live lanes pass against the alpha.2
+  checkout (and 0.1.2-alpha.1 and the published rc line).
+
+- **The CI canary is now a two-channel radar.** The weekly live lane
+  becomes a daily matrix over both published harness channels (rc and
+  alpha), each resolved from its npm dist-tag to the matching
+  `dsh-v<version>` git tag, so an upstream publish is tested against us
+  on the next run — and a red channel opens ONE tracking issue instead of
+  waiting to be noticed by hand.
+
 ## [0.0.3] - 2026-08-29
 
 - **dsh 0.1.2-alpha.1 (source master) support, without dropping the npm line.**
