@@ -1,13 +1,14 @@
 /**
  * Dual-generation Remote adapter. dsh ≤0.1.1-rc.2 carries the settings/llm
- * namespaces on the `connection.api` face; dsh 0.1.2-alpha.1 (the current
- * harness master) installs them as traced `remote.<ns>` Cordis services whose
- * generated Typert proxies take positional arguments, rename `providers` to
- * `listConfigurableProviders`, and resolve the slimmer `RemoteResult`
- * envelope (no outer `rpcId`/`result` wrapper, values unboxed from their
- * `{providers}`/`{models}` carriers). The page logic keeps speaking ONE face
- * — {@link IRemoteApi}, the legacy published contract — so this module is the
- * only place in the plugin that knows both generations.
+ * namespaces on the `connection.api` face; dsh 0.1.2-alpha.1 installs them as
+ * traced `remote.<ns>` Cordis services whose generated Typert proxies take
+ * positional arguments, rename `providers` to `listConfigurableProviders`,
+ * and resolve the slimmer `RemoteResult` envelope (no outer `rpcId`/`result`
+ * wrapper, values unboxed from their `{providers}`/`{models}` carriers);
+ * 0.1.2-alpha.2 then wraps owner failures in `RemoteError` and rebadges the
+ * hyphen codes into slash namespaces. The page logic keeps speaking ONE face
+ * — {@link IRemoteApi}, the legacy published contract, with those renames
+ * folded back — so this module is the only place that knows both generations.
  *
  * The alpha-generation METHOD SIGNATURES are hand-projected here from the
  * generated clients in the harness checkout: the npm-published
@@ -27,10 +28,9 @@ import type {
 } from './types.ts'
 
 /**
- * Slim Remote failure carried by the alpha.1 generation's error branch. Its
- * `code` is an open string upstream (the closed union lives in the carrier
- * package, which would invert the dependency edge), but the VALUES are the
- * same wire vocabulary the legacy RpcError union closed over.
+ * Slim Remote failure carried by the alpha generation's error branch: a
+ * code-discriminated `RemoteError` union instance since alpha.2, wire-cardinal
+ * `code`/`message`/`details` fields throughout both alphas.
  */
 interface AlphaRemoteFailure {
   readonly code: string
@@ -95,19 +95,37 @@ interface AlphaLlmRemote {
 const ALPHA_RPC_ID = 'bmp-alpha' as RpcId
 
 /**
+ * alpha.2 rebadged the hyphen wire codes into slash namespaces
+ * (`settings-conflict` → `settings/conflict`) with details unchanged; the
+ * page branches on the legacy union, so the adapter folds the renames back.
+ */
+const ALPHA_TO_LEGACY_CODES: Readonly<Record<string, RpcError['code']>> = {
+  'settings/conflict': 'settings-conflict',
+}
+
+/** Fold an alpha failure into the legacy RpcError frame: translate the renamed codes, carry message/details. */
+function toLegacyError(error: AlphaRemoteFailure): RpcError {
+  // Fieldwise, never a spread: alpha.2's RemoteError instance has its `message`
+  // Error-inherited and non-enumerable, so `{...error}` would silently drop it.
+  return {
+    code: ALPHA_TO_LEGACY_CODES[error.code] ?? error.code,
+    message: error.message,
+    details: error.details,
+  } as RpcError
+}
+
+/**
  * Re-wrap the slim alpha envelope as the legacy carrier frame the page's
  * `unwrap` reads: stamp the shared `rpcId` echo the alpha no longer
- * carries, box the value arm, and forward the failure arm. The single cast
- * at the `error` slot pins exactly the documented claim that the alpha's
- * open `code` string and the legacy closed RpcError union spell the same
- * wire vocabulary — `settings-conflict` keeps its `{ns, expected, actual}`
- * details, so the CAS branch in the store stays put.
+ * carries, box the value arm, and translate the failure arm. The CAS details
+ * (`{ns, expected, actual}`) survive the code rename untouched, so the
+ * store's conflict branch stays put.
  */
 function toLegacyEnvelope<T>(call: Promise<AlphaRemoteResult<T>>): Promise<RpcResponse<T>> {
   return call.then(result =>
     result.ok
       ? { rpcId: ALPHA_RPC_ID, result }
-      : { rpcId: ALPHA_RPC_ID, result: { ok: false, error: result.error as RpcError } },
+      : { rpcId: ALPHA_RPC_ID, result: { ok: false, error: toLegacyError(result.error) } },
   )
 }
 
