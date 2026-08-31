@@ -1,25 +1,37 @@
 name: live canary
 
-# The real-boundary lanes: pack the artifact, install it into a throwaway
-# profile next to the published base/web-app bundles, boot a REAL DeepSeek
-# Harness from a fresh checkout, and drive the page in a real browser —
-# integration (module served) and functional (a capability write persists to
-# settings.yaml). Too heavy for the push pipeline, so this lane canaries once
-# a week (plus on manual dispatch); the hermetic `ci` workflow stays the fast
-# gate.
+# The real-boundary lanes, run once per published harness channel: pack the
+# artifact, install it into a throwaway profile next to the published
+# base/web-app bundles, boot a REAL DeepSeek Harness from the git tag the
+# channel's npm dist-tag currently names, and drive the page in a real
+# browser — integration (module served) and functional (a capability write
+# persists to settings.yaml). Resolving the dist-tag each run makes this a
+# radar: when upstream publishes a new rc or alpha, THIS lane is what tests
+# us against it first, and a red run opens one tracking issue instead of
+# anyone discovering the break by hand. Daily, plus on manual dispatch; the
+# hermetic `ci` workflow stays the fast gate.
 
 on:
   schedule:
-    - cron: '17 21 * * 1'
+    - cron: '17 21 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
+  # The escalation step opens one issue per red channel instead of letting a
+  # silent cron turn stale.
+  issues: write
 
 jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # One red channel must not cancel the other: each is a verdict on its own.
+    strategy:
+      fail-fast: false
+      matrix:
+        # `tag` is the npm dist-tag naming that channel's current public build.
+        channel: [{ key: rc, label: rc }, { key: alpha, label: alpha }]
     env:
       BMP_DSH_DIR: ${{ github.workspace }}/dsh
       # Chrome is preinstalled on the runner; puppeteer-core just needs the path.
@@ -34,29 +46,69 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Channel → harness git tag, resolved fresh: the dist-tag names the
+      # published version, and upstream tags every release `dsh-v<version>`.
+      # A channel whose dist-tag vanished (a closed line) skips cleanly —
+      # loud failure is reserved for a line that exists but broke us.
+      - name: resolve channel tag
+        id: resolve
+        run: |
+          v=$(npm view @deepseek-ai/dsh "dist-tags.${{ matrix.channel.key }}" 2>/dev/null || true)
+          if [ -z "$v" ]; then
+            echo "::warning::dist-tag ${{ matrix.channel.key }} is absent; channel skipped"
+          else
+            echo "version=$v" >> "$GITHUB_OUTPUT"
+            echo "ref=dsh-v$v" >> "$GITHUB_OUTPUT"
+          fi
+
       # The harness is consumed as a source checkout: liveBoot runs the real
       # CLI through tsx out of it. Its lockfile pins the wire line the plugin
       # is tested against; a harness regression fails this lane, not a PR.
       - uses: actions/checkout@v4
+        if: steps.resolve.outputs.ref
         with:
           repository: deepseek-ai/deepseek-harness
           path: dsh
+          ref: ${{ steps.resolve.outputs.ref }}
       - uses: pnpm/action-setup@v4
+        if: steps.resolve.outputs.ref
         with:
           # The action would otherwise read OUR package.json (no version →
           # "No pnpm version is specified"); point it at the harness's one,
           # exactly like the harness's own CI resolves it.
           package_json_file: dsh/package.json
       - uses: actions/setup-node@v4
+        if: steps.resolve.outputs.ref
         with:
           node-version: 22
       - run: pnpm install
+        if: steps.resolve.outputs.ref
         working-directory: dsh
       # The checkout's loader entries import workspace sources through
       # node_modules junctions — lib/ exists only after the harness builds
       # itself (local checkouts quietly carry those artifacts; CI's does not).
       - run: pnpm build
+        if: steps.resolve.outputs.ref
         working-directory: dsh
 
       - run: npm run test:live
+        if: steps.resolve.outputs.ref
       - run: npm run test:functional
+        if: steps.resolve.outputs.ref
+
+      # Escalate a red run into ONE open issue per channel per harness version:
+      # never a daily duplicate, never a silent canary.
+      - name: escalate on failure
+        if: failure() && steps.resolve.outputs.ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="live canary red on ${{ matrix.channel.label }} (${{ steps.resolve.outputs.version }})"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          existing=$(gh issue list --search "\"$title\" in:title" --state open --json number --jq '.[0].number')
+          if [ -z "$existing" ]; then
+            gh issue create --title "$title" \
+              --body "Harness ${{ matrix.channel.label }} ${{ steps.resolve.outputs.version }} breaks the live lanes. CI run: $run_url"
+          else
+            gh issue comment "$existing" --body "Still red: $run_url"
+          fi

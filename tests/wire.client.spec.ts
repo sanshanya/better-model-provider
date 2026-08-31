@@ -221,6 +221,31 @@ describe('resolveRemoteApiGently — alpha generation (dsh 0.1.2-alpha.1)', () =
     expect(caught).toMatchObject({ name: 'HarnessRpcError', code: 'settings-conflict', message })
   })
 
+  test('an alpha.2 RemoteError-shaped failure folds its slash code back to the legacy spelling', async () => {
+    // alpha.2 hands a real RemoteError INSTANCE: `message` is Error-inherited
+    // (non-enumerable, so a spread would drop it) and the code is slash-spelled.
+    class FakeRemoteError extends Error {
+      readonly code = 'settings/conflict'
+      readonly details = { ns: 'llm-pi-ai', expected: 1, actual: 2 }
+    }
+    const fake = new FakeRemoteError('expected revision 1, actual 2')
+    expect(Object.keys(fake)).not.toContain('message')
+    const { services } = alphaRemotes({ mutate: () => Promise.resolve({ ok: false, error: fake }) })
+    const resolved = resolveGently(services)
+
+    const response = await resolved.settings.mutate({
+      ns: 'llm-pi-ai',
+      ops: [{ op: 'set', path: ['providers', 'ksyun', 'models'], value: [] }],
+      expectedRevision: 1,
+    })
+    if (response.result.ok) throw new Error('expected the failure branch')
+    expect(response.result.error).toEqual({
+      code: 'settings-conflict',
+      message: 'expected revision 1, actual 2',
+      details: { ns: 'llm-pi-ai', expected: 1, actual: 2 },
+    })
+  })
+
   test('a carrier-folded failure rides the value-mapping arm untouched', async () => {
     // Upstream folds carrier failures into the same error branch
     // (transportError's 'internal' catch-all) — the boxing helpers must not
