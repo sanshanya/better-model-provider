@@ -6,10 +6,10 @@ name: live canary
 # channel's npm dist-tag currently names, and drive the page in a real
 # browser — integration (module served) and functional (a capability write
 # persists to settings.yaml). Resolving the dist-tag each run makes this a
-# radar: when upstream publishes a new rc or alpha, THIS lane is what tests
-# us against it first, and a red run opens one tracking issue instead of
-# anyone discovering the break by hand. Daily, plus on manual dispatch; the
-# hermetic `ci` workflow stays the fast gate.
+# radar: when upstream publishes a new latest or alpha, THIS lane is what
+# tests us against it first, and a red run opens one tracking issue instead
+# of anyone discovering the break by hand. Daily, plus on manual dispatch;
+# the hermetic `ci` workflow stays the fast gate.
 
 on:
   schedule:
@@ -30,8 +30,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # `tag` is the npm dist-tag naming that channel's current public build.
-        channel: [{ key: rc, label: rc }, { key: alpha, label: alpha }]
+        # Each key IS an npm dist-tag on @deepseek-ai/dsh: the tag names that
+        # channel's current public build. `latest` is the stable install line
+        # (today 0.1.5-rc.x); `alpha` is the fast line. (There is no dist-tag
+        # literally named "rc" — using channel names as keys would silently
+        # skip a leg, so keys must stay dist-tags.)
+        channel: [{ key: latest, label: latest }, { key: alpha, label: alpha }]
     env:
       BMP_DSH_DIR: ${{ github.workspace }}/dsh
       # Chrome is preinstalled on the runner; puppeteer-core just needs the path.
