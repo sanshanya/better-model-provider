@@ -59,6 +59,7 @@ write and returns to dormancy when the last override lifts (`tests/functional.li
 |---|---|---|
 | `npm run lint`, `npm run typecheck`, `npm run verify:contract` (default, `--lines`, `--lib`), `npm run test:coverage`, `npm run build` | green | `/tmp/bmp-team/evidence/final-chain.log` § *build* (`built lib/client.js (58462 bytes)`), § *verify-contract…* (three modes: `1 / 2 / 1 line(s) clean`), § *test:coverage* (`All files 100 % stmts / 99.46 % branch / 100 % funcs / 100 % lines`) |
 | `npm run verify:pack` (+ `node scripts/verify-contract.mjs --lib`) | green | `/tmp/bmp-team/evidence/g2-verifypack-firsthand.txt` — `verify-pack: 21 upstream declaration gap(s) tolerated (none inside better-model-provider)`, `verify-pack: better-model-provider@0.0.5 tarball OK (incl. consumer-type probe)`, `swept 14 shipped declaration(s): no retired member imported`, exit 0 for both |
+| `src/**` + `tests/**` compiled against the **checkout's own** `dsh-v0.1.7-rc.1` declarations instead of the npm copy (`npx tsc --noEmit -p /tmp/bmp-team/tsconfig.a4-overlay.json`) | green | `/tmp/bmp-team/evidence/A4-overlay-verdict.txt`: `exit=0`, `error TS lines: 0`, and `--listFiles` shows `…/deepseek-harness/packages/api/remotes/lib/types/client/index.d.ts`, so the override is live |
 
 `verify:pack` packs the tarball and compiles it **where it lands** — tarball + typescript + the `@types/*` our shipped
 declarations consume, with no `--skipLibCheck`. The 21 tolerated diagnostics are all upstream, and the reason is
@@ -77,6 +78,13 @@ provisioning reproduces the pre-fix failure **inside our artifact** and exits 1 
 `lib/client/CapabilitiesSection.d.ts(8,35): error TS7016: Could not find a declaration file for module 'react'`
 (`/tmp/bmp-team/evidence/compat-verifypack-red.txt` is that same reproduction recorded on the pre-fix tree). The fix
 lives in `scripts/verify-pack.mjs:138-155` (provisioning) with the strict compile kept at `:162-177`.
+
+The overlay row is the one gate `npm run typecheck` cannot stand in for: `tsconfig.json` runs with `skipLibCheck: true`,
+so it compiles this package's own sources but never the harness's declaration *graph*. Pointing the one
+`@deepseek-ai/dsh-*` specifier this code imports (`@deepseek-ai/dsh-api-remotes/client`; `connection`, `llm`, `settings`
+and `typert-protocol` resolve transitively through it) at the checkout's built `.d.ts` is what makes the claim
+"compiles against 0.1.7-rc.1" testable, and the same overlay on the pre-cutover 0.0.4 source was `exit 2` with 53
+errors (`/tmp/bmp-team/evidence/A4-overlay-baseline.txt`) — so the green is a measured change, not a vacuous gate.
 
 Reproduction note: the first-hand run above used `npm_config_ignore_scripts=true`, so the gate's internal `npm pack`
 did not re-run `prepack` → `npm run build`. That skips a redundant `lib/` write, not the packed bytes —
