@@ -10,11 +10,11 @@
  */
 
 import type {
-  ConfigurableProviderView, DiscoveredModelView, IRemoteApi, SettingsNamespaceView,
-  SettingsPathOpView, RpcResponse,
-} from './types.ts'
+  LlmConfigurableProvider, LlmDiscoveredModel, RemoteResult, SettingsNamespaceView,
+  SettingsPathOpView,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import Schema from '@deepseek-ai/schemastery'
-import { HarnessRpcError } from './types.ts'
+import { HarnessRpcError, type RemoteApi } from './types.ts'
 import { getPath, hasPath, nodeAtPath } from './paths.ts'
 
 /**
@@ -32,9 +32,9 @@ function rehydrateSchema(envelope: unknown): Schema | undefined {
 }
 
 /** Unwrap one Remote envelope: business failures throw the typed wire error. */
-export function unwrap<T>(response: RpcResponse<T>): T {
-  if (!response.result.ok) throw new HarnessRpcError(response.result.error.code, response.result.error.message, response.result.error.details)
-  return response.result.value
+export function unwrap<T>(result: RemoteResult<T>): T {
+  if (!result.ok) throw new HarnessRpcError(result.error.code, result.error.message, result.error.details)
+  return result.value
 }
 
 /** The settings namespace whose profiles this page edits. */
@@ -209,7 +209,7 @@ export type CapabilityWriteMode = 'declared-models' | 'catalog-overrides' | 'inh
 /** Derive one row's write mode from the namespace layers and the directory entry. */
 export function writeModeOf(
   namespace: SettingsNamespaceView,
-  entry: ConfigurableProviderView,
+  entry: LlmConfigurableProvider,
 ): CapabilityWriteMode {
   // A hand-declared route owns its list the moment the key exists, empty or
   // not. A catalog route is different: the adapter treats user `models: []`
@@ -226,7 +226,7 @@ export function writeModeOf(
 /** One row of the capabilities page. */
 export interface CapabilityRowView {
   /** Route facts from the directory. */
-  entry: ConfigurableProviderView
+  entry: LlmConfigurableProvider
   /** Whether any layer configures this provider (its profile resolves). */
   configured: boolean
   /** The route's effective model entries (empty for a catalog-overrides row). */
@@ -298,28 +298,24 @@ export class CapabilitiesController {
     modalities: [],
   })
 
-  constructor(private readonly api: IRemoteApi) {}
+  constructor(private readonly api: RemoteApi) {}
 
   /** Latest load generation; older responses are never allowed to publish. */
   private generation = 0
-  /** Abort the previous read when a newer invalidation supersedes it. */
-  private activeAbort: AbortController | undefined
   /** Prevent a disposed plugin fiber from receiving a late response. */
   private disposed = false
   /** Serialize mutations so each write builds from the latest accepted namespace. */
   private mutationTail: Promise<void> = Promise.resolve()
 
-  /** Stop in-flight reads and make every later response a no-op. */
+  /** Make every later response a no-op: the generation fence drops in-flight reads. */
   dispose(): void {
     this.disposed = true
     this.generation += 1
-    this.activeAbort?.abort()
-    this.activeAbort = undefined
     this.discoveries.clear()
   }
 
   /** Memoized official-catalog discovery per provider; lazily asked on manage-click. */
-  private readonly discoveries = new Map<string, Promise<readonly DiscoveredModelView[]>>()
+  private readonly discoveries = new Map<string, Promise<readonly LlmDiscoveredModel[]>>()
 
   /**
    * Ask the configuration-time discovery seam for one catalog route's
@@ -328,12 +324,11 @@ export class CapabilitiesController {
    * stays callable even when the route's baseURL is dead. A rejected ask is
    * not cached: the next click asks again.
    */
-  discoverOfficialModels(provider: string): Promise<readonly DiscoveredModelView[]> {
+  discoverOfficialModels(provider: string): Promise<readonly LlmDiscoveredModel[]> {
     if (this.disposed) return Promise.reject(new Error('better-model-provider: controller disposed'))
     const existing = this.discoveries.get(provider)
     if (existing !== undefined) return existing
-    const pending = this.api.llm.discoverModels({ settingsNs: PI_AI_NS, provider })
-      .then(response => unwrap(response).models)
+    const pending = this.api.llm.discoverModels(PI_AI_NS, { provider }).then(unwrap)
     this.discoveries.set(provider, pending)
     void pending.catch(() => {
       if (this.discoveries.get(provider) === pending && !this.disposed) this.discoveries.delete(provider)
@@ -353,19 +348,14 @@ export class CapabilitiesController {
     // from an older generation may contradict freshly reloaded overrides —
     // they are cheap enough to ask again on the next manage click.
     this.discoveries.clear()
-    this.activeAbort?.abort()
-    const abort = new AbortController()
-    this.activeAbort = abort
-    return this.runLoad(generation, abort.signal).finally(() => {
-      if (this.activeAbort === abort) this.activeAbort = undefined
-    })
+    return this.runLoad(generation)
   }
 
   private isCurrent(generation: number): boolean {
     return !this.disposed && generation === this.generation
   }
 
-  private async runLoad(generation: number, signal: AbortSignal): Promise<void> {
+  private async runLoad(generation: number): Promise<void> {
     const current = this.store.getSnapshot()
     // Only the very first load blanks the page: a background refresh keeps
     // showing the last accepted snapshot so open rows, drafts, and row errors
@@ -374,18 +364,16 @@ export class CapabilitiesController {
       this.store.setSnapshot({ ...current, status: 'loading', error: null })
     }
     try {
-      // Every Remote method is payload-direct: the carrier wraps the payload
-      // in the envelope, and the host validates it against a `z.object({})`
-      // request schema — so the empty object is the ONLY request the harness
-      // accepts for these reads. Business failures ride `result.ok === false`
-      // and are thrown here as ordinary load errors.
+      // Both reads are parameterless service methods and answer BARE values, so
+      // the join signal bounds nothing on them; business failures ride
+      // `result.ok === false` and surface here as ordinary load errors.
       const [settings, directory] = await Promise.all([
-        this.api.settings.describe({}, signal).then(unwrap),
-        this.api.llm.providers({}, signal).then(unwrap),
+        this.api.settings.describe().then(unwrap),
+        this.api.llm.listConfigurableProviders().then(unwrap),
       ])
       if (!this.isCurrent(generation)) return
       const namespace = settings.namespaces.find(ns => ns.ns === PI_AI_NS)
-      const joined: CapabilityRowView[] = directory.providers
+      const joined: CapabilityRowView[] = directory
         .filter(entry => entry.settingsNs === PI_AI_NS)
         .map(entry => ({
           entry,
@@ -410,7 +398,6 @@ export class CapabilitiesController {
         // handling here.
         dormant: joined.filter(row => !row.configured && row.entry.declared === false),
         ...extractCapabilityVocabulary(namespace),
-        
       })
     } catch (error: unknown) {
       if (!this.isCurrent(generation)) return
@@ -444,11 +431,7 @@ export class CapabilitiesController {
         if (ops.length === 0) return false
         // Only a real write fences stale reads and owns the CAS baseline.
         const namespace = this.prepareMutation()
-        const next = unwrap(await this.api.settings.mutate({
-          ns: PI_AI_NS,
-          ops,
-          expectedRevision: namespace.revision,
-        }))
+        const next = unwrap(await this.api.settings.mutate(PI_AI_NS, ops, namespace.revision))
         this.store.setSnapshot({ ...this.store.getSnapshot(), namespace: next })
         await this.reload()
         return true
@@ -473,8 +456,6 @@ export class CapabilitiesController {
     // commit() has already validated liveness and the namespace before it
     // reaches here; this step only fences reads that started before the write.
     this.generation += 1
-    this.activeAbort?.abort()
-    this.activeAbort = undefined
     return this.store.getSnapshot().namespace as SettingsNamespaceView
   }
 

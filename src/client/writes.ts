@@ -8,9 +8,17 @@
  * @module better-model-provider/writes
  */
 
-import type { SettingsNamespaceView, SettingsPathOpView, WireJson } from './types.ts'
+import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { getPath } from './paths.ts'
 import { profileModels, profileOverrides, userOwnsModels } from './store.ts'
+
+/**
+ * One JSON value as the settings document carries it, derived from the contract's
+ * own write op (the `set` arm of `SettingsPathOpView`): every staged row, leaf
+ * and op payload this page builds was serialized into the document by the
+ * harness to begin with.
+ */
+type WireJson = Extract<SettingsPathOpView, { op: 'set' }>['value']
 
 /**
  * One level's spelling in a staged `reasoningEfforts` dict: a non-empty wire

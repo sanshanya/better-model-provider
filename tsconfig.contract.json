@@ -1,0 +1,9 @@
+{
+  "//": "Contract gate: compile the SHIPPED source (src/ only) against the harness declarations the lockfile pins. The subject is the published artifact's source, with no test-side shim in the program: 0.0.4 stayed green while its client entry named four members 0.1.7 had removed, because the shim was inside the program. Run: npm run verify:contract",
+  "//skipLibCheck": "Inherited `true` on purpose. With `false` this program reports 23 errors and NONE of them are in src/ (2 are TS6200 duplicate-definition complaints from the bundled schemastery declarations; the rest are upstream's own barrels importing packages they never declare — dsh-api-remotes -> dsh-api-gateway/client, dsh-plugin-manager/types, ... — plus their d.ts using ES2022 globals our ES2020 lib lacks). The declaration GRAPH is gated instead by scripts/verify-pack.mjs, whose bare-consumer probe compiles the PACKED artifact with no skipLibCheck and fails on any diagnostic inside it; that probe's program reports 21 tolerated upstream gaps.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"]
+}

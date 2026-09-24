@@ -18,16 +18,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # The hermetic gate stays first and stays in this order: cheap static
-      # checks before the ones that build, so a PR fails fast on the cheapest
-      # signal. `verify:contract` is the declaration-graph probe for the client
-      # type seam — `skipLibCheck: true` hides a broken upstream declaration
-      # graph, so `typecheck` alone cannot be read as proof that the seam is
-      # the upstream contract.
+      # Cheap static checks first, then the ones that build, so a PR fails fast
+      # on the cheapest signal. `verify:contract` compiles src/ — and only src/,
+      # so no test-side shim can hide inside the program (that shim is how 0.0.4
+      # stayed green while its entry named four members 0.1.7 had removed).
+      # It inherits skipLibCheck: true, because a strict pass is permanently red
+      # on upstream barrels that import packages they never declare; the
+      # declaration GRAPH is gated by verify:pack, which compiles the packed
+      # artifact with no skipLibCheck. There is no hermetic test step — the real
+      # behavioral gate is the live canary in live.yml, which boots a harness
+      # and drives a browser on both supported lines.
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run verify:contract
-      - run: npm run test:coverage
       - run: npm run build
       - run: npm run verify:pack
       - name: upload build output
