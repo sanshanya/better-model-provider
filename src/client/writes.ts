@@ -8,7 +8,7 @@
  * @module better-model-provider/writes
  */
 
-import type { SettingsNamespaceView, SettingsPathOpView } from './types.ts'
+import type { SettingsNamespaceView, SettingsPathOpView, WireJson } from './types.ts'
 import { getPath } from './paths.ts'
 import { profileModels, profileOverrides, userOwnsModels } from './store.ts'
 
@@ -121,7 +121,10 @@ export function declaredEditOps(
   if (target < 0) target = models.findIndex(entry => (entry['id'] ?? '') === expectedId)
   if (target < 0) return []
   const nextModels = models.map((entry, i) => (i === target ? applyPatch(entry, patch) : { ...entry }))
-  return [{ op: 'set', path: [...path, 'models'], value: nextModels }]
+  // The rows came out of the redacted settings document, so they carry the JSON
+  // the contract's `set` op declares; the builder's `Record<string, unknown>`
+  // view is the page's own staging shape, not a wider wire promise.
+  return [{ op: 'set', path: [...path, 'models'], value: nextModels as WireJson }]
 }
 
 /** Whether an existing override carries any capability leaf this editor owns. */
@@ -172,7 +175,9 @@ export function catalogEditOps(
       if (existing !== undefined && leaf in existing) unsets.push(leaf)
     } else {
       const value = part.value
-      sets.push({ op: 'set', path: opPath, value: Array.isArray(value) ? [...value] : (typeof value === 'object' ? { ...value } : value) })
+      // Same seam as `declaredEditOps`: a staged capability leaf is JSON by
+      // construction (a wire spelling, a modality list, or a count).
+      sets.push({ op: 'set', path: opPath, value: (Array.isArray(value) ? [...value] : (typeof value === 'object' ? { ...value } : value)) as WireJson })
     }
   }
   if (sets.length > 0) {

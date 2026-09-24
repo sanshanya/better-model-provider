@@ -6,10 +6,10 @@
  */
 
 import Schema from '@deepseek-ai/schemastery'
-import type { RpcError, RpcId, RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
+import type { RpcId, RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   ConfigurableProviderView, DiscoveredModelView, IRemoteApi, SettingsNamespaceView,
-  SettingsPathOpView,
+  SettingsPathOpView, WireFailure, WireJson,
 } from '../src/client/types.ts'
 
 /**
@@ -96,6 +96,12 @@ function applySettingsMutation(arrange: FaceArrangement, ops: readonly SettingsP
 export interface FaceArrangement {
   writable: boolean
   revision: number
+  /**
+   * The redacted document layers. Deliberately `unknown`: each spec arranges
+   * them from hand-written records, and the contract types them as the JSON
+   * the harness serialized — which the fixture restores at the one place the
+   * namespace view is built.
+   */
   user: unknown
   value: unknown
   base?: unknown
@@ -156,13 +162,19 @@ export function piAiSchema(entry: Schema = modelsItemSchema()): unknown {
 /** The fixture llm-pi-ai namespace view. */
 export function piAiNamespace(arrange: FaceArrangement): SettingsNamespaceView {
   // Presence semantics match the host: absent layers are OMITTED, never
-  // written as present-`undefined` keys.
+  // written as present-`undefined` keys. The arranged records are the JSON the
+  // host would have serialized into the document, so the seam to the contract
+  // is one cast here rather than a typed literal in every spec.
+  const value = arrange.value as WireJson
+  const user = arrange.user as WireJson
+  const base = arrange.base as WireJson | undefined
   return {
     ns: 'llm-pi-ai',
-    schema: piAiSchema(),
-    value: arrange.value,
-    ...(arrange.base === undefined ? {} : { base: arrange.base }),
-    ...(arrange.user === undefined ? {} : { user: arrange.user }),
+    autoGenerate: false,
+    schema: piAiSchema() as WireJson,
+    value,
+    ...(base === undefined ? {} : { base }),
+    ...(arrange.user === undefined ? {} : { user }),
     applies: 'live',
     secrets: [],
     revision: arrange.revision,
@@ -178,7 +190,6 @@ export function providerEntry(provider: string, declared: boolean, path = ['prov
     settingsNs: 'llm-pi-ai',
     settingsPath: path,
     declared,
-    active: true,
   }
 }
 
@@ -223,7 +234,7 @@ export function scriptedFace(arrange: FaceArrangement): { api: IRemoteApi; mutat
       mutate: payload => {
         mutates.push({ ns: payload.ns, ops: payload.ops, expectedRevision: payload.expectedRevision })
         if (payload.expectedRevision !== undefined && payload.expectedRevision !== arrange.revision) {
-          return Promise.resolve(envelopeError('settings-conflict', `expected revision ${String(payload.expectedRevision)}, actual ${String(arrange.revision)}`))
+          return Promise.resolve(envelopeError('settings/conflict', `expected revision ${String(payload.expectedRevision)}, actual ${String(arrange.revision)}`))
         }
         applySettingsMutation(arrange, payload.ops)
         return Promise.resolve(en(piAiNamespace(arrange)))
@@ -250,11 +261,18 @@ export function scriptedFace(arrange: FaceArrangement): { api: IRemoteApi; mutat
   return { api, mutates }
 }
 
-/** Envelope variant the tests construct for business-failure scenarios. */
-export function envelopeError(code: 'internal' | 'settings-conflict', message: string): RpcResponse<never> {
-  // RpcError is a closed discriminated union over (code, details) pairs —
-  // control flow picks one real wire arm; no cast, no phantom pair.
-  const error: RpcError = code === 'settings-conflict'
+/**
+ * Envelope variant the tests construct for business-failure scenarios. The
+ * conflict arm carries the CURRENT code the settings controller produces
+ * (`packages/api/settings-controller/src/index.ts:261` at `dsh-v0.1.7-rc.1`)
+ * with its own CAS details triple, so the page's conflict branch is driven by
+ * the same wire vocabulary a live host sends.
+ */
+export function envelopeError(code: 'internal' | 'settings/conflict', message: string): RpcResponse<never> {
+  // The carrier failure is `{code, message, details}` with a plain string code
+  // (`WireFailure`, derived from the contract's `RpcResult`), so both arms build
+  // without a cast; the harness's own details pair rides the conflict arm.
+  const error: WireFailure = code === 'settings/conflict'
     ? { code, message, details: { ns: 'llm-pi-ai', expected: 1, actual: 2 } }
     : { code, message, details: {} }
   return { rpcId: `bmp-${++next}` as RpcId, result: { ok: false, error } }

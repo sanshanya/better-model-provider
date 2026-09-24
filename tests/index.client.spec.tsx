@@ -10,12 +10,47 @@ import { cleanup } from '@testing-library/react'
 import { apply, name, inject, refreshIfLoaded, CapabilitiesSection } from '../src/client/index.ts'
 import { CapabilitiesController } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
-import type { IRemoteApi } from '../src/client/types.ts'
-import type { ClientShim } from '../src/client/types.ts'
+import type { ClientShim, DiscoverPayload, IRemoteApi } from '../src/client/types.ts'
 import { defaultArrangement, scriptedFace } from './helpers.ts'
 
+/**
+ * The mounted `remote.settings` / `remote.llm` service pair answering one
+ * scripted page face. The generated service clients take positional arguments
+ * and resolve the slim `RemoteResult` envelope — the scripted face's carrier
+ * `result` arm, with the directory and discovery values UNBOXED, exactly as the
+ * services answer them. This bridge is therefore the SERVICE side of the same
+ * projection `wire.ts` adapts back onto the page, and it stays live: each call
+ * re-reads the (monkey-patchable) scripted methods.
+ */
+function servicePair(api: IRemoteApi): Record<string, unknown> {
+  const settings = api.settings
+  const llm = api.llm
+  return {
+    'remote.settings': {
+      describe: () => settings.describe({}).then(response => response.result),
+      mutate: (ns: string, ops: Parameters<typeof settings.mutate>[0]['ops'], expectedRevision?: number) =>
+        settings.mutate({
+          ns,
+          ops,
+          // The page's payload is exact-optional: an absent revision must stay
+          // absent, never present-undefined.
+          ...(expectedRevision === undefined ? {} : { expectedRevision }),
+        }).then(response => response.result),
+    },
+    'remote.llm': {
+      // Both llm methods answer the BARE value; the page's carrier boxes them
+      // back into `{providers}` / `{models}` when it adapts the pair.
+      listConfigurableProviders: () => llm.providers({}).then(({ result }) =>
+        result.ok ? { ok: true, value: result.value.providers } : result),
+      discoverModels: (settingsNs: string, request: Omit<DiscoverPayload, 'settingsNs'>, signal?: AbortSignal) =>
+        llm.discoverModels({ settingsNs, ...request }, signal).then(({ result }) =>
+          result.ok ? { ok: true, value: result.value.models } : result),
+    },
+  }
+}
+
 /** A fully scripted ClientShim whose seams the assertions read back. */
-function fakeCtx(api?: IRemoteApi, services: Record<string, unknown> = {}): {
+function fakeCtx(services: Record<string, unknown> = {}): {
   ctx: ClientShim
   effects: { fn: () => unknown; name: string | undefined }[]
   remotes: { event: string; handler: (...args: readonly unknown[]) => void }[]
@@ -45,10 +80,10 @@ function fakeCtx(api?: IRemoteApi, services: Record<string, unknown> = {}): {
       register: (options, component) => { registrations.push({ options: options as unknown as Record<string, unknown>, component }); return () => {} },
     },
     remote: { $on: (event, handler) => { remotes.push({ event, handler: handler as (...args: readonly unknown[]) => void }); return () => {} } },
-    // The dual-generation probe reads the scripted service table; callers
-    // with no alpha services exercise the legacy `connection.api` fallback.
+    // The readiness probe observes the scripted service table through `get`
+    // only: the plugin never declares `remote.<ns>` in its own inject list.
+    // A caller with an empty table exercises the deferred, warned-once path.
     get: (name: string) => services[name],
-    connection: api === undefined ? {} : { api },
     effect: (fn, name) => { effects.push({ fn, name }) },
     on: (event, handler) => {
       remotes.push({ event, handler })
@@ -68,13 +103,15 @@ afterEach(() => {
 describe('plugin entry', () => {
   test('the fiber identity is stable', () => {
     expect(name).toBe('better-model-provider')
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'remote'])
+    // `connection` is deliberately absent: the ≤0.1.1 namespaced `api` face is
+    // gone, and `connection/reset` is an event, not a service read.
+    expect(inject).toEqual(['slots', 'locale', 'remote'])
   })
 
   test('apply registers copy, stylesheet, wiring, and the slot', async () => {
     const arrange = defaultArrangement()
     const { api } = scriptedFace(arrange)
-    const { ctx, effects, remotes, registrations, binds, dictionaries } = fakeCtx(api)
+    const { ctx, effects, remotes, registrations, binds, dictionaries } = fakeCtx(servicePair(api))
     apply(ctx)
     for (const effect of effects) void effect.fn()
 
@@ -155,12 +192,12 @@ describe('plugin entry', () => {
   })
 
   test('a Remote face still mounting defers EVERY registration instead of throwing', () => {
-    // Master (0.1.2-alpha.1) mounts its `remote.<ns>` services one
-    // asynchronous namespace at a time — settings lands before llm — so an
-    // apply running in that window must WAIT rather than fail the loader
-    // entry (a throw here once bricked the whole client composition).
+    // The harness mounts its `remote.<ns>` services one asynchronous namespace
+    // at a time — settings lands before llm — so an apply running in that
+    // window must WAIT rather than fail the loader entry (a throw here once
+    // bricked the whole client composition).
     const services: Record<string, unknown> = {}
-    const { ctx, effects, remotes, registrations } = fakeCtx(undefined, services)
+    const { ctx, effects, remotes, registrations } = fakeCtx(services)
     expect(() => apply(ctx)).not.toThrow()
     expect(registrations).toHaveLength(0)
     expect(document.head.querySelector('style[data-plugin="better-model-provider"]')).toBeNull()
@@ -195,7 +232,7 @@ describe('plugin entry', () => {
       describes += 1
       return before(payload)
     }
-    const { ctx, effects, remotes } = fakeCtx(api)
+    const { ctx, effects, remotes } = fakeCtx(servicePair(api))
     apply(ctx)
     for (const effect of effects) void effect.fn()
     remotes[0]?.handler('some-other-ns')
@@ -211,8 +248,8 @@ describe('plugin entry', () => {
   test('mounting twice and disposing both leaves no duplicate artifacts', () => {
     const arrange = defaultArrangement()
     const { api } = scriptedFace(arrange)
-    const first = fakeCtx(api)
-    const second = fakeCtx(api)
+    const first = fakeCtx(servicePair(api))
+    const second = fakeCtx(servicePair(api))
     apply(first.ctx)
     apply(second.ctx)
     for (const effect of first.effects) void effect.fn()
@@ -236,7 +273,7 @@ describe('plugin entry', () => {
       describes += 1
       return before(payload)
     }
-    const { ctx, effects, remotes } = fakeCtx(api)
+    const { ctx, effects, remotes } = fakeCtx(servicePair(api))
     apply(ctx)
     for (const effect of effects) void effect.fn()
     expect(remotes).toHaveLength(3)

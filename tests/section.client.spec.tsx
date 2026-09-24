@@ -10,7 +10,7 @@ import { cleanup, fireEvent, getByLabelText, queryByLabelText, render, screen, w
 import { CapabilitiesSection } from '../src/client/CapabilitiesSection.tsx'
 import { CapabilitiesController } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
-import { IRemoteApi } from '../src/client/types.ts'
+import { IRemoteApi, SettingsNamespaceView } from '../src/client/types.ts'
 import { assertEmptyPayload, catalogArrangement, defaultArrangement, envelopeError, en as wrap, modelsEnvelope, piAiNamespace, providerEntry, scriptedFace, FaceArrangement, CATALOG_MODELS } from './helpers.ts'
 
 /** Harness-side copy stand-in: exactly what the locale seam hands the page. */
@@ -54,7 +54,7 @@ async function mountWithSchema(schema: unknown): Promise<void> {
   const arrange = defaultArrangement()
   const { api } = scriptedFace(arrange)
   const ns = piAiNamespace(arrange)
-  ns.schema = schema
+  ns.schema = schema as SettingsNamespaceView['schema']
   api.settings.describe = (payload) => {
     assertEmptyPayload('settings.describe', payload)
     return Promise.resolve(wrap({ writable: true, hasDocument: true, namespaces: [ns] }))
@@ -373,10 +373,10 @@ describe('capacity editing (contextWindow / maxTokens)', () => {
 })
 
 describe('write conflict posture', () => {
-  test('a settings-conflict surfaces the localized conflict copy', async () => {
+  test('a settings/conflict surfaces the localized conflict copy', async () => {
     const { api } = await mount()
     fireEvent.click(screen.getByRole('button', { name: 'expand' }))
-    api.settings.mutate = () => Promise.resolve(envelopeError('settings-conflict', 'revision moved'))
+    api.settings.mutate = () => Promise.resolve(envelopeError('settings/conflict', 'revision moved'))
     fireEvent.change(reasoningSelect(), { target: { value: 'off' } })
     fireEvent.click(screen.getByRole('button', { name: en.apply }))
     await waitFor(() => expect(screen.queryByRole('alert')?.textContent).toBe(en.conflict))
@@ -472,7 +472,7 @@ describe('schema-driven edges', () => {
     arrange.value = arrange.user
     const { api, mutates } = scriptedFace(arrange)
     const bare = piAiNamespace(arrange)
-    bare.schema = bareSchema(['off', 'max'])
+    bare.schema = bareSchema(['off', 'max']) as SettingsNamespaceView['schema']
     api.settings.describe = (payload) => {
       assertEmptyPayload('settings.describe', payload)
       return Promise.resolve(wrap({ writable: true, hasDocument: true, namespaces: [bare] }))

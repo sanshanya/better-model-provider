@@ -4,12 +4,25 @@ name: live canary
 # artifact, install it into a throwaway profile next to the published
 # base/web-app bundles, boot a REAL DeepSeek Harness from the git tag the
 # channel's npm dist-tag currently names, and drive the page in a real
-# browser — integration (module served) and functional (a capability write
-# persists to settings.yaml). Resolving the dist-tag each run makes this a
-# radar: when upstream publishes a new latest or alpha, THIS lane is what
-# tests us against it first, and a red run opens one tracking issue instead
-# of anyone discovering the break by hand. Daily, plus on manual dispatch;
-# the hermetic `ci` workflow stays the fast gate.
+# browser — integration (module advertised and served) and functional (a
+# capability edit persists into the settings document). Resolving each
+# dist-tag every run makes this a radar: when upstream publishes a new
+# latest, next or alpha, THIS lane is what tests us against it first, and a
+# red run opens one tracking issue instead of anyone discovering the break
+# by hand. Daily, plus on manual dispatch; the hermetic `ci` workflow stays
+# the fast gate.
+#
+# Two properties make a green leg mean something:
+#   * the resolved version is handed to the lane as BMP_DSH_BUNDLE_VERSION,
+#     which liveBoot asserts against the worktree it boots and against the
+#     bundles it installs, so the leg cannot pass by booting a different
+#     generation than the one it names (PKG-3);
+#   * a leg whose dist-tag RESOLVED must FAIL when the lane skips. vitest
+#     exits 0 when every test in a file is skipped, and the live specs skip
+#     themselves whenever the boot environment is unavailable — so without
+#     this, a broken leg reports success while proving nothing. Skipping
+#     with a ::warning:: is reserved for a dist-tag npm no longer publishes,
+#     which is the transient state the warning was designed for.
 
 on:
   schedule:
@@ -26,16 +39,19 @@ jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # One red channel must not cancel the other: each is a verdict on its own.
+    # One red channel must not cancel the others: each is a verdict on its own.
     strategy:
       fail-fast: false
       matrix:
         # Each key IS an npm dist-tag on @deepseek-ai/dsh: the tag names that
-        # channel's current public build. `latest` is the stable install line
-        # (today 0.1.5-rc.x); `alpha` is the fast line. (There is no dist-tag
-        # literally named "rc" — using channel names as keys would silently
-        # skip a leg, so keys must stay dist-tags.)
-        channel: [{ key: latest, label: latest }, { key: alpha, label: alpha }]
+        # channel's current public build. `latest` is the stable install line,
+        # `next` the line the user's GUI runs, `alpha` the fast line. (There is
+        # no dist-tag literally named "rc" — using channel names as keys would
+        # silently skip a leg, so keys must stay dist-tags.)
+        channel:
+          - { key: latest, label: latest }
+          - { key: next, label: next }
+          - { key: alpha, label: alpha }
     env:
       BMP_DSH_DIR: ${{ github.workspace }}/dsh
       # Chrome is preinstalled on the runner; puppeteer-core just needs the path.
@@ -52,58 +68,115 @@ jobs:
 
       # Channel → harness git tag, resolved fresh: the dist-tag names the
       # published version, and upstream tags every release `dsh-v<version>`.
-      # A channel whose dist-tag vanished (a closed line) skips cleanly —
-      # loud failure is reserved for a line that exists but broke us.
+      # ONLY an absent dist-tag (a closed line) may skip; anything else is a
+      # verdict this job owes an answer for.
       - name: resolve channel tag
         id: resolve
         run: |
-          v=$(npm view @deepseek-ai/dsh "dist-tags.${{ matrix.channel.key }}" 2>/dev/null || true)
+          set -euo pipefail
+          key='${{ matrix.channel.key }}'
+          v=$(npm view @deepseek-ai/dsh "dist-tags.$key" 2>/dev/null || true)
           if [ -z "$v" ]; then
-            echo "::warning::dist-tag ${{ matrix.channel.key }} is absent; channel skipped"
-          else
-            echo "version=$v" >> "$GITHUB_OUTPUT"
-            echo "ref=dsh-v$v" >> "$GITHUB_OUTPUT"
+            echo "::warning::dist-tag $key is absent from npm; channel skipped"
+            echo "resolved=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "ref=dsh-v$v" >> "$GITHUB_OUTPUT"
+          echo "resolved=true" >> "$GITHUB_OUTPUT"
+          # Every later step (and the lane itself) carries the resolved version:
+          # liveBoot reads <checkout>/packages/boot/app-boot/package.json,
+          # refuses to boot when it disagrees, and pins both client bundles to
+          # it, so this leg proves the generation it names instead of the
+          # installation it happened to anchor.
+          echo "BMP_DSH_BUNDLE_VERSION=$v" >> "$GITHUB_ENV"
+          echo "resolved $key -> $v (tag dsh-v$v)"
 
       # The harness is consumed as a source checkout: liveBoot runs the real
       # CLI through tsx out of it. Its lockfile pins the wire line the plugin
       # is tested against; a harness regression fails this lane, not a PR.
       - uses: actions/checkout@v4
-        if: steps.resolve.outputs.ref
+        if: steps.resolve.outputs.resolved == 'true'
         with:
           repository: deepseek-ai/deepseek-harness
           path: dsh
           ref: ${{ steps.resolve.outputs.ref }}
       - uses: pnpm/action-setup@v4
-        if: steps.resolve.outputs.ref
+        if: steps.resolve.outputs.resolved == 'true'
         with:
           # The action would otherwise read OUR package.json (no version →
           # "No pnpm version is specified"); point it at the harness's one,
           # exactly like the harness's own CI resolves it.
           package_json_file: dsh/package.json
       - uses: actions/setup-node@v4
-        if: steps.resolve.outputs.ref
+        if: steps.resolve.outputs.resolved == 'true'
         with:
           node-version: 22
       - run: pnpm install
-        if: steps.resolve.outputs.ref
+        if: steps.resolve.outputs.resolved == 'true'
         working-directory: dsh
       # The checkout's loader entries import workspace sources through
       # node_modules junctions — lib/ exists only after the harness builds
       # itself (local checkouts quietly carry those artifacts; CI's does not).
       - run: pnpm build
-        if: steps.resolve.outputs.ref
+        if: steps.resolve.outputs.resolved == 'true'
         working-directory: dsh
 
-      - run: npm run test:live
-        if: steps.resolve.outputs.ref
-      - run: npm run test:functional
-        if: steps.resolve.outputs.ref
+      # `set -o pipefail` keeps the lane's exit code authoritative while `tee`
+      # keeps the transcript: without it a failing vitest would be masked by a
+      # successful tee, which is its own green placebo.
+      - name: integration lane (module advertised and served)
+        if: steps.resolve.outputs.resolved == 'true'
+        run: |
+          set -o pipefail
+          npm run test:live 2>&1 | tee live-output.log
+
+      - name: functional lane (capability edit round-trips)
+        if: steps.resolve.outputs.resolved == 'true'
+        run: |
+          set -o pipefail
+          npm run test:functional 2>&1 | tee functional-output.log
+
+      # The verdict this job owes for a resolved channel. Runs only when every
+      # earlier step succeeded, so a real lane failure keeps its own
+      # attribution; what it catches is the all-green-nothing-ran shape.
+      - name: assert the resolved channel actually ran
+        if: ${{ success() && steps.resolve.outputs.resolved == 'true' }}
+        run: |
+          set -euo pipefail
+          version='${{ steps.resolve.outputs.version }}'
+          channel='${{ matrix.channel.label }}'
+          fail() { echo "::error::$1"; exit 1; }
+
+          for log in live-output.log functional-output.log; do
+            [ -f "$log" ] || fail "$channel $version: no transcript at $log — the lane never ran"
+            if grep -Eq 'Tests[[:space:]]+[0-9]+ skipped|Test Files[[:space:]]+[0-9]+ skipped' "$log"; then
+              fail "$channel $version: $log reports skipped tests — the canary proved nothing. Skipping is permitted only when the dist-tag is absent from npm."
+            fi
+            if ! grep -Eq 'Tests[[:space:]]+[0-9]+ passed' "$log"; then
+              fail "$channel $version: $log reports no passing test"
+            fi
+            if ! grep -Fq "live boot: dsh $version" "$log"; then
+              fail "$channel $version: $log never printed the boot resolution for this version — wrong worktree, or a bundle pin the boot refused (PKG-3)"
+            fi
+          done
+
+          # The generation proofs PKG-3 prints, per lane: the integration lane
+          # parses the served boot graph, the functional lane resolves the
+          # settings document this generation actually writes.
+          if ! grep -Eq "live integration: dsh $version .*graph=[0-9]+ rows .*advertised=http" live-output.log; then
+            fail "$channel $version: the integration lane never parsed a boot graph carrying an advertised module URL"
+          fi
+          if ! grep -Fq "live functional: dsh $version" functional-output.log; then
+            fail "$channel $version: the functional lane never named the generation it resolved its settings document for"
+          fi
+          echo "$channel $version: both lanes ran, no skips, generation asserted"
 
       # Escalate a red run into ONE open issue per channel per harness version:
-      # never a daily duplicate, never a silent canary.
+      # never a daily duplicate, never a silent canary. A skip that failed the
+      # assertion above lands here too.
       - name: escalate on failure
-        if: failure() && steps.resolve.outputs.ref
+        if: failure() && steps.resolve.outputs.resolved == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

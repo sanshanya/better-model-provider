@@ -1,6 +1,6 @@
 # better-model-provider
 
-Per-model capability editing for DeepSeek Harness: reasoning-effort levels (with wire spellings), input modalities, and token capacities — declarations on your own routes, sparse overrides on official-catalog routes.
+Sparse, non-destructive per-model overrides on official-catalog routes — including reasoning-effort levels and their wire spellings — without replacing the catalog.
 
 **Custom models: edit declarations. Official models: edit overrides. Provider configuration remains official.**
 
@@ -10,7 +10,9 @@ Per-model capability editing for DeepSeek Harness: reasoning-effort levels (with
 
 ## Why
 
-Two per-model fields stayed YAML-only: `reasoningEfforts` and `input`. Until declared, the picker shows no effort control and image sessions refuse the model (`... does not accept image input`). This page edits them plus `contextWindow` / `maxTokens` — one row fully configures one model.
+The official Models page edits a model's input types and token capacities, but it does so by rewriting that route's whole `models` array: one field touched, and every other model on the route stops following the catalog — and sparse `modelOverrides` becomes illegal there. It also has no control for per-model reasoning effort.
+
+This page is the other seam. On an official-catalog route it writes only the difference for the model you touched — including `reasoningEfforts` levels and their wire spellings — and leaves the rest of the catalog following upstream. On your own declared routes it edits the declarations directly. Which fields overlap with the official page and which do not: [docs/compatibility.md](docs/compatibility.md).
 
 ## Install
 
@@ -30,11 +32,15 @@ CI rebuilds and republishes ready-built artifacts to the `master` branch on ever
 3. Official-catalog routes: tap **Manage official models** and edit. Every change here stores only the difference from the official default — everything else keeps following catalog updates; **Reset to official defaults** undoes all of one model's edits at once.
 4. **Manage official providers (N)** unfolds installed-but-unconfigured routes: pick one, apply the first change, and the route comes into being (its API key still goes on the official page).
 
+The official Models page can also edit input types and capacities — but only by replacing a route's whole model list, which stops that route following the catalog and rules out overrides. Use this page when you want one model changed and the other thirty-seven still following it. Once a route's list *has* been replaced on the official page, this page edits that list like any declared route; the details are in [docs/compatibility.md](docs/compatibility.md).
+
 Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare their capabilities on their own settings pages and never appear here.
 
 ## Compatibility
 
-We declare compatibility with the whole **dsh 0.1.x line**: contract `@deepseek-ai/dsh-api-remotes >=0.1.0-rc.7 <0.2.0`, real-harness lanes verified on rc.7, rc.8, 0.1.1-rc.2, and 0.1.2-alpha.1/alpha.2 — a daily CI canary re-proves both published channels (latest and alpha) against their current npm dist-tags. Surfaces outside the contract degrade silently. Development gates, live lanes, and invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Verified end-to-end on a real harness — integration and functional lanes both — on **dsh 0.1.5-rc.3** and **dsh 0.1.7-rc.1**. The declared peer ranges admit the harness packages this plugin's type seam resolves into from `0.1.2-alpha.1` upward; the range is enumerated per published line because npm's peer rule and dsh's admission gate read prerelease ranges differently, and lines that are admitted without a lane run are listed as exactly that. The nightly canary re-proves the `latest`, `next` and `alpha` channels, and a leg whose channel resolved but whose lane skipped now fails the run instead of passing quietly.
+
+Claim-by-claim evidence, the field-by-field overlap decision, and the known limitation: [docs/compatibility.md](docs/compatibility.md).
 
 ## License
 

@@ -18,8 +18,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The hermetic gate stays first and stays in this order: cheap static
+      # checks before the ones that build, so a PR fails fast on the cheapest
+      # signal. `verify:contract` is the declaration-graph probe for the client
+      # type seam — `skipLibCheck: true` hides a broken upstream declaration
+      # graph, so `typecheck` alone cannot be read as proof that the seam is
+      # the upstream contract.
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run verify:contract
       - run: npm run test:coverage
       - run: npm run build
       - run: npm run verify:pack

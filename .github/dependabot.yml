@@ -2,11 +2,13 @@ version: 2
 
 # Upstream-drift patrol: the published harness client contract is pinned as a
 # devDependency. When the harness ships a newer line, dependabot opens a PR;
-# CI's typecheck step is the arbiter — a wire drift surfaces as a green PR
-# (safe bump) or a failing one (contract change needing review). The allow
-# list names exactly the contract package: a wildcard would also patrol the
-# harness's sibling packages (transitive lockfile churn, one PR per package),
-# which carries no contract signal.
+# CI's typecheck plus `verify:contract` are the arbiters — a wire drift
+# surfaces as a green PR (safe bump) or a failing one (contract change needing
+# review). The allow list names exactly the DECLARATION OWNERS this plugin
+# depends on — `@deepseek-ai/dsh-api-remotes` re-exports through these, and the
+# type seam resolves names into them, so each one moving is a contract signal;
+# a wildcard would also patrol the harness's unrelated siblings (transitive
+# lockfile churn, one PR per package) and drown that signal.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -14,4 +16,10 @@ updates:
       interval: weekly
     allow:
       - dependency-name: '@deepseek-ai/dsh-api-remotes'
+      - dependency-name: '@deepseek-ai/dsh-client-connection'
+      - dependency-name: '@deepseek-ai/dsh-llm'
+      - dependency-name: '@deepseek-ai/dsh-settings'
+      - dependency-name: '@deepseek-ai/dsh-typert-protocol'
+    # One PR for the whole patrol: the owners move together on a harness line,
+    # and one reviewable bump is the point of the exercise.
     open-pull-requests-limit: 1
