@@ -12,7 +12,7 @@ Sparse, non-destructive per-model overrides on official-catalog routes — inclu
 
 The official Models page edits a model's input types and token capacities, but it does so by rewriting that route's whole `models` array: one field touched, and every other model on the route stops following the catalog — and sparse `modelOverrides` becomes illegal there. It also has no control for per-model reasoning effort.
 
-This page is the other seam. On an official-catalog route it writes only the difference for the model you touched — including `reasoningEfforts` levels and their wire spellings — and leaves the rest of the catalog following upstream. On your own declared routes it edits the declarations directly. Which fields overlap with the official page and which do not: [docs/compatibility.md](docs/compatibility.md).
+This page is the other seam. On an official-catalog route it writes only the difference for the model you touched — including `reasoningEfforts` levels and their wire spellings — and leaves the rest of the catalog following upstream. On your own declared routes it edits the declarations directly.
 
 ## Install
 
@@ -32,15 +32,24 @@ CI rebuilds and republishes ready-built artifacts to the `master` branch on ever
 3. Official-catalog routes: tap **Manage official models** and edit. Every change here stores only the difference from the official default — everything else keeps following catalog updates; **Reset to official defaults** undoes all of one model's edits at once.
 4. **Manage official providers (N)** unfolds installed-but-unconfigured routes: pick one, apply the first change, and the route comes into being (its API key still goes on the official page).
 
-The official Models page can also edit input types and capacities — but only by replacing a route's whole model list, which stops that route following the catalog and rules out overrides. Use this page when you want one model changed and the other thirty-seven still following it. Once a route's list *has* been replaced on the official page, this page edits that list like any declared route; the details are in [docs/compatibility.md](docs/compatibility.md).
+The official Models page can also edit input types and capacities — but only by replacing a route's whole model list, which stops that route following the catalog and rules out overrides. Use this page when you want one model changed and the other thirty-seven still following it. Once a route's list *has* been replaced on the official page, this page edits that list like any declared route.
 
 Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare their capabilities on their own settings pages and never appear here.
 
 ## Compatibility
 
-Verified end-to-end on a real harness — integration and functional lanes both — on **dsh 0.1.5-rc.3** and **dsh 0.1.7-rc.1**. The declared peer ranges admit the harness packages this plugin's type seam resolves into from `0.1.2-alpha.1` upward; the range is enumerated per published line because npm's peer rule and dsh's admission gate read prerelease ranges differently, and lines that are admitted without a lane run are listed as exactly that. The nightly canary re-proves the `latest`, `next` and `alpha` channels, and a leg whose channel resolved but whose lane skipped now fails the run instead of passing quietly.
+| Harness line | Status |
+|---|---|
+| `dsh 0.1.7-rc.1` (npm `next`) | verified end-to-end |
+| `dsh 0.1.5-rc.3` (npm `latest`) | verified end-to-end |
+| `0.1.2-alpha.1` … `0.1.6-alpha.2` | **not verified** — admitted by the peer ranges, no lane has run on them |
+| `0.1.0-rc.7` … `0.1.1-rc.2` | refused: no `connection.api` generation here any more |
 
-Claim-by-claim evidence, the field-by-field overlap decision, and the known limitation: [docs/compatibility.md](docs/compatibility.md).
+Verified means both lanes on a real harness: integration boots a checkout and serves the plugin's client module, functional drives a real browser through a capability write and its revert. They are opt-in — `BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live` (see `CONTRIBUTING.md` for the functional lane) — and skip without it.
+
+The peer ranges are **enumerated per published line** (`>=0.1.2-alpha.1 <0.2.0 || >=0.1.3-alpha.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-alpha.1 <0.2.0 || >=0.1.7-alpha.1 <0.2.0`) rather than one wide `>=0.1.0-rc.7` range, because dsh's admission gate evaluates prereleases with `includePrerelease: true` while npm's peer rule does not: a single wide range reads as unsatisfied to npm on versions dsh accepts. The nightly canary re-proves the `latest`, `next` and `alpha` channels, and a leg whose channel resolved but whose lane skipped fails the run instead of passing quietly.
+
+Field overlap: this page edits per-model `reasoningEfforts` (levels and their wire spellings) and sparse `modelOverrides` — the official Models page has no control for either. It also edits `input`, `contextWindow` and `maxTokens`, which the official page edits natively, so those are a convenience here rather than a unique capability.
 
 ## License
 

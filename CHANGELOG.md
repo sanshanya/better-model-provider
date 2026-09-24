@@ -1,78 +1,75 @@
 # Changelog
 
 Notable changes to better-model-provider. Versions track the published git
-tags (npm artifact when it ships); the verification matrix each release was
-held to is auditable claim by claim in `docs/compatibility.md`.
+tags (npm artifact when it ships); what each release was verified against is the
+README compatibility table.
+
+## [0.0.6] - 2026-09-24
+
+Subtraction release. Behaviour is unchanged — the sole full-chain gate is the
+golden lane, green on `dsh-v0.1.7-rc.1` and `dsh-v0.1.5-rc.3` — while 18 files
+are gone and 5,968 lines were deleted (`git show --shortstat` on this release's
+commit: −5,968; the insertion side is dominated by the documentation that
+replaced the deleted tooling, so it is not cited as a fixed number).
+
+- Deleted the call adapter (`wire.ts` 292 → 136) and the contract mirror
+  (`types.ts` 226 → 151): the page calls the mounted services' own signatures, so
+  one wire vocabulary replaces two. `store.ts` lost its AbortController machinery
+  (neither read accepts a signal, so it could never cancel anything).
+- The test surface is now only the two full-chain golden lanes. Eight hermetic
+  specs, `tests/helpers.ts` and `tests/manifest.client.spec.ts` are gone
+  (3,385 lines under `tests/`), plus the roster generator and its snapshots
+  (`scripts/roster.mjs`, 223): they asserted against hand-projected fake faces
+  and were green while the same source had 53 real contract errors. The
+  inject-row truth they guarded now comes from the served boot graph inside the
+  integration lane.
+- `verify-contract` is a 9-line `tsconfig.contract.json` overlay (was a 389-line
+  probe); `verify-pack` keeps its strict packed-artifact probe.
+- `@deepseek-ai/schemastery` pinned to `3.18.1`: the incidental `3.18.4`
+  re-resolution added 1,615 bytes — 33% of the artifact — and no one chose it.
+  The pin rides an npm `overrides` entry: the type-owner devDeps this package
+  needs peer `~3.18.4`, so a plain direct pin makes `npm ci` fail on ERESOLVE.
+- Artifact 55,689 bytes (0.0.4: 56,642; 0.0.5: 58,462). `src/` 2,681 lines
+  (0.0.4: 2,813). Tracked files 39 (0.0.4: 47). Verification tooling 122 lines
+  (was 932) — 2 over the 120 this release aimed for, stated rather than hidden.
 
 ## [0.0.5] - 2026-09-24
 
-- **Re-aimed at the dsh 0.1.7 line and re-verified on the stable line.** Both
-  real-harness lanes pass on `dsh-v0.1.7-rc.1` (npm `next`) and on
-  `dsh-v0.1.5-rc.3` (npm `latest`): integration proves the running host
-  advertises and serves the plugin's client module, functional proves all four
-  browser workflows — schema-derived vocabulary, capability write + revert,
-  catalog override + reset, dormant-route onboarding and closure. Every claim
-  and its transcript: `docs/compatibility.md`.
+- **Re-aimed at dsh 0.1.7, still verified on 0.1.5.** Both real-harness lanes
+  pass on `dsh-v0.1.7-rc.1` (npm `next`) and `dsh-v0.1.5-rc.3` (npm `latest`):
+  integration serves the plugin's client module, functional drives a real browser
+  through all four workflows (schema-derived vocabulary, capability write +
+  revert, catalog override + reset, dormant-route onboarding and closure).
 
-- **The red lanes were stale oracles, not a broken plugin.** On 0.1.7 the
-  section mounted, the rows rendered and the writes landed; three lane
-  assumptions were stale. Web resources became document-relative and
-  combo-batched (`eeb9b03465`, first tagged `dsh-v0.1.7-alpha.1`), so the
-  integration lane's `/plugins/…` attribute scan matched nothing and now reads
-  the served boot graph. The home `settings.yaml` was retired into a one-time
-  import whose writes persist to `profiles/<name>/cordis.patch.yml`
-  (`601d6761e4`, same tag), so the functional lane now resolves the document the
-  generation actually writes. And a `settings.mutate` round trip that takes
-  423–505 ms at 0.1.7 (10–34 ms at 0.1.5) raced the lane's next click — the lane
-  now waits on the staged-edit fence.
+- **The red lanes were stale oracles, not a broken plugin.** Plugin resources
+  became document-relative and combo-batched (`eeb9b03465`, first tagged
+  `dsh-v0.1.7-alpha.1`), so the integration lane reads the served `__DSH_BOOT__`
+  graph instead of an attribute shape that no longer exists; home
+  `settings.yaml` became a one-time import writing
+  `profiles/<name>/cordis.patch.yml` (`601d6761e4`), so the functional lane
+  resolves the document the generation actually writes; and a `settings.mutate`
+  round trip taking 423–505 ms at 0.1.7 (10–34 ms at 0.1.5) is awaited on the
+  staged-edit fence.
 
-- **The lane can no longer lie about the generation it boots.** It pins both
-  client bundles to the checkout's own
-  `packages/boot/app-boot/package.json` version, refuses a mismatch (including a
-  differing `BMP_DSH_BUNDLE_VERSION` assertion), and prints the installed pins
-  plus the versions the CLI's own tree carries. The previous pins named
-  `0.1.0-rc.7` while installation-first bundle resolution had been serving the
-  checkout's line all along — the defect was the missing proof, not a wrong
-  generation.
+- **The lane can no longer lie about its generation** — both bundles are pinned
+  to the checkout's own `packages/boot/app-boot/package.json` version and a
+  mismatch is refused; the old `0.1.0-rc.7` pins were inert, since
+  installation-first resolution had been serving the checkout's line all along.
+  **Manifest honesty:** the six `dsh.client.inject` ids are held to rows of that
+  served graph. The removed `@deepseek-ai/dsh-client-runtime` id was **inert**
+  (an unknown inject id is skipped), so this fixed a declaration, not a mount
+  failure. The ≤0.1.1 `connection.api` surface is gone, and the peer ranges
+  enumerate the published lines from `>=0.1.2-alpha.1` because one wide range
+  reads as unsatisfied to npm's peer rule while dsh's admission gate accepts it.
 
-- **Manifest honesty.** `dsh.client.inject` now names six rows that exist on
-  both verified lines, held there by `tests/manifest.client.spec.ts` against the
-  per-line rosters in `tests/rosters/` (regenerable from a dist-tag with
-  `scripts/roster.mjs`). The removed `@deepseek-ai/dsh-client-runtime` id was
-  **inert** — the client module system skips an inject id that names no row —
-  so this fixes a declaration, not a mount failure. The `connection` row was
-  likewise redundant: the web-app bundle mounts `@deepseek-ai/dsh-client-connection`
-  itself and this fiber reads no service from it any more.
-
-- **The ≤0.1.1 surface is gone.** The `connection.api` fallback generation and
-  the hyphenated wire-code fold are deleted: every line this release claims
-  mounts the traced `remote.<ns>` services. The peer ranges therefore enumerate
-  the published lines from `>=0.1.2-alpha.1` — one wide range reads as
-  unsatisfied to npm's peer rule while dsh's admission gate accepts it, so the
-  enumeration is written to be judged identically by both (measured matrix in
-  `docs/compatibility.md` §3).
-
-- **Gates grew where green used to be assumed.** `npm run verify:contract`
-  resolves every contract name the type seam consumes, walks each name's own
-  export chain, and runs a strict (`skipLibCheck: false`) probe per line and of
-  the shipped declarations — because `skipLibCheck: true` hides a broken
-  declaration graph. `npm run verify:pack` packs the artifact, executes the
-  bundle under a stubbed module loader, and compiles it in a bare consumer that
-  is provisioned with the `@types/*` our shipped declarations consume (ranges
-  read from this repo's own `devDependencies`) rather than being handed
-  `--skipLibCheck`: the 21 upstream barrel gaps are named and tolerated, any
-  diagnostic inside the artifact still fails the gate, and emptying the
-  provisioning reproduces the failure it was written to catch. The canary
-  resolves `latest`, `next` and `alpha`, hands each resolved version to its lane,
-  and FAILS a leg whose channel resolved but whose lane skipped.
-
-- **Compatibility claims are auditable.** `docs/compatibility.md` maps every
-  claim to a lane transcript or a harness `file:line`, gives the field-by-field
-  overlap decision (the official Models page natively edits `input`,
-  `contextWindow` and `maxTokens`; per-model `reasoningEfforts` and sparse
-  `modelOverrides` remain this plugin's), and records the known limitation that
-  an official-page edit of a pi-ai route writes the whole `models` array, which
-  makes `modelOverrides` illegal for that route.
+- **Gates:** `verify:contract` compiles `src/` — and only `src/`, so no test-side
+  shim can hide in the program — against the lockfile-pinned declarations; the
+  audit found 53 real contract errors the old `npm run typecheck` could not see.
+  It inherits `skipLibCheck: true` (a strict pass is permanently red on upstream
+  barrels that import packages they never declare), so the declaration GRAPH is
+  gated by `verify:pack`, whose bare-consumer probe compiles the packed artifact
+  with no `skipLibCheck`. The canary covers `latest`, `next` and `alpha` and
+  FAILS a leg whose channel resolved while its lane skipped.
 
 ## [0.0.4] - 2026-08-31
 
@@ -100,7 +97,7 @@ held to is auditable claim by claim in `docs/compatibility.md`.
 > line still has: it is absent at both `0.1.5-rc.3` and `0.1.7-rc.1`, and 0.0.5 deleted that code. Those releases also
 > read their lane results through oracles later found stale — the integration lane matched a bundle-URL attribute shape
 > that stopped existing, and the functional lane asserted a settings document path that was retired — and their bundle
-> pins named `0.1.0-rc.7` without asserting which generation the boot actually served. `docs/compatibility.md` §6 has
+> pins named `0.1.0-rc.7` without asserting which generation the boot actually served. The 0.0.5 entry above names
 > the mechanism. Their "both live lanes pass" is a record of what those releases believed, not evidence for this one.
 
 ## [0.0.3] - 2026-08-29

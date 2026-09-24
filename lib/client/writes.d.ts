@@ -7,7 +7,7 @@
  *
  * @module better-model-provider/writes
  */
-import type { SettingsNamespaceView, SettingsPathOpView } from './types.ts';
+import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client';
 /**
  * One level's spelling in a staged `reasoningEfforts` dict: a non-empty wire
  * string, or `null` for the explicit-off level. Staged (write-side) faces are

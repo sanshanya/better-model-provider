@@ -8,9 +8,10 @@
  *
  * @module better-model-provider/store
  */
-import type { ConfigurableProviderView, DiscoveredModelView, IRemoteApi, SettingsNamespaceView, SettingsPathOpView, RpcResponse } from './types.ts';
+import type { LlmConfigurableProvider, LlmDiscoveredModel, RemoteResult, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client';
+import { type RemoteApi } from './types.ts';
 /** Unwrap one Remote envelope: business failures throw the typed wire error. */
-export declare function unwrap<T>(response: RpcResponse<T>): T;
+export declare function unwrap<T>(result: RemoteResult<T>): T;
 /** The settings namespace whose profiles this page edits. */
 export declare const PI_AI_NS = "llm-pi-ai";
 /** Human text for a rejected wire call. */
@@ -65,11 +66,11 @@ export declare function profileOverrides(namespace: SettingsNamespaceView, path:
  */
 export type CapabilityWriteMode = 'declared-models' | 'catalog-overrides' | 'inherited-models';
 /** Derive one row's write mode from the namespace layers and the directory entry. */
-export declare function writeModeOf(namespace: SettingsNamespaceView, entry: ConfigurableProviderView): CapabilityWriteMode;
+export declare function writeModeOf(namespace: SettingsNamespaceView, entry: LlmConfigurableProvider): CapabilityWriteMode;
 /** One row of the capabilities page. */
 export interface CapabilityRowView {
     /** Route facts from the directory. */
-    entry: ConfigurableProviderView;
+    entry: LlmConfigurableProvider;
     /** Whether any layer configures this provider (its profile resolves). */
     configured: boolean;
     /** The route's effective model entries (empty for a catalog-overrides row). */
@@ -112,16 +113,14 @@ export declare function createSnapshotStore<T>(initial: T): SnapshotStore<T>;
 export declare class CapabilitiesController {
     private readonly api;
     readonly store: SnapshotStore<CapabilitiesState>;
-    constructor(api: IRemoteApi);
+    constructor(api: RemoteApi);
     /** Latest load generation; older responses are never allowed to publish. */
     private generation;
-    /** Abort the previous read when a newer invalidation supersedes it. */
-    private activeAbort;
     /** Prevent a disposed plugin fiber from receiving a late response. */
     private disposed;
     /** Serialize mutations so each write builds from the latest accepted namespace. */
     private mutationTail;
-    /** Stop in-flight reads and make every later response a no-op. */
+    /** Make every later response a no-op: the generation fence drops in-flight reads. */
     dispose(): void;
     /** Memoized official-catalog discovery per provider; lazily asked on manage-click. */
     private readonly discoveries;
@@ -132,7 +131,7 @@ export declare class CapabilitiesController {
      * stays callable even when the route's baseURL is dead. A rejected ask is
      * not cached: the next click asks again.
      */
-    discoverOfficialModels(provider: string): Promise<readonly DiscoveredModelView[]>;
+    discoverOfficialModels(provider: string): Promise<readonly LlmDiscoveredModel[]>;
     /**
      * Fetch the join with a small latest-wins fence. The Host remains the source
      * of truth; this controller only protects the rendered view from an older
