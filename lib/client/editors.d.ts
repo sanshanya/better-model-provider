@@ -9,7 +9,11 @@
 import type { ReactElement } from 'react';
 import type { TFn } from './locales.ts';
 import type { ReasoningEffortsValue } from './writes.ts';
-/** Surface a rejected write: settings-conflict gets the localized, actionable message. */
+/**
+ * Surface a rejected write: a revision conflict (`settings/conflict`, produced
+ * by the settings controller at dsh 0.1.7) gets the localized, actionable
+ * message; every other code renders through its own wire `message`.
+ */
 export declare function writeErrorText(caught: unknown, t: TFn): string;
 /** The disclosures' chevron: direction is the only variation. */
 export declare function Chevron(props: {

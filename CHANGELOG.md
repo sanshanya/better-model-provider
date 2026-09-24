@@ -2,7 +2,77 @@
 
 Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); the verification matrix each release was
-held to lives in `CONTRIBUTING.md`.
+held to is auditable claim by claim in `docs/compatibility.md`.
+
+## [0.0.5] - 2026-09-24
+
+- **Re-aimed at the dsh 0.1.7 line and re-verified on the stable line.** Both
+  real-harness lanes pass on `dsh-v0.1.7-rc.1` (npm `next`) and on
+  `dsh-v0.1.5-rc.3` (npm `latest`): integration proves the running host
+  advertises and serves the plugin's client module, functional proves all four
+  browser workflows — schema-derived vocabulary, capability write + revert,
+  catalog override + reset, dormant-route onboarding and closure. Every claim
+  and its transcript: `docs/compatibility.md`.
+
+- **The red lanes were stale oracles, not a broken plugin.** On 0.1.7 the
+  section mounted, the rows rendered and the writes landed; three lane
+  assumptions were stale. Web resources became document-relative and
+  combo-batched (`eeb9b03465`, first tagged `dsh-v0.1.7-alpha.1`), so the
+  integration lane's `/plugins/…` attribute scan matched nothing and now reads
+  the served boot graph. The home `settings.yaml` was retired into a one-time
+  import whose writes persist to `profiles/<name>/cordis.patch.yml`
+  (`601d6761e4`, same tag), so the functional lane now resolves the document the
+  generation actually writes. And a `settings.mutate` round trip that takes
+  423–505 ms at 0.1.7 (10–34 ms at 0.1.5) raced the lane's next click — the lane
+  now waits on the staged-edit fence.
+
+- **The lane can no longer lie about the generation it boots.** It pins both
+  client bundles to the checkout's own
+  `packages/boot/app-boot/package.json` version, refuses a mismatch (including a
+  differing `BMP_DSH_BUNDLE_VERSION` assertion), and prints the installed pins
+  plus the versions the CLI's own tree carries. The previous pins named
+  `0.1.0-rc.7` while installation-first bundle resolution had been serving the
+  checkout's line all along — the defect was the missing proof, not a wrong
+  generation.
+
+- **Manifest honesty.** `dsh.client.inject` now names six rows that exist on
+  both verified lines, held there by `tests/manifest.client.spec.ts` against the
+  per-line rosters in `tests/rosters/` (regenerable from a dist-tag with
+  `scripts/roster.mjs`). The removed `@deepseek-ai/dsh-client-runtime` id was
+  **inert** — the client module system skips an inject id that names no row —
+  so this fixes a declaration, not a mount failure. The `connection` row was
+  likewise redundant: the web-app bundle mounts `@deepseek-ai/dsh-client-connection`
+  itself and this fiber reads no service from it any more.
+
+- **The ≤0.1.1 surface is gone.** The `connection.api` fallback generation and
+  the hyphenated wire-code fold are deleted: every line this release claims
+  mounts the traced `remote.<ns>` services. The peer ranges therefore enumerate
+  the published lines from `>=0.1.2-alpha.1` — one wide range reads as
+  unsatisfied to npm's peer rule while dsh's admission gate accepts it, so the
+  enumeration is written to be judged identically by both (measured matrix in
+  `docs/compatibility.md` §3).
+
+- **Gates grew where green used to be assumed.** `npm run verify:contract`
+  resolves every contract name the type seam consumes, walks each name's own
+  export chain, and runs a strict (`skipLibCheck: false`) probe per line and of
+  the shipped declarations — because `skipLibCheck: true` hides a broken
+  declaration graph. `npm run verify:pack` packs the artifact, executes the
+  bundle under a stubbed module loader, and compiles it in a bare consumer that
+  is provisioned with the `@types/*` our shipped declarations consume (ranges
+  read from this repo's own `devDependencies`) rather than being handed
+  `--skipLibCheck`: the 21 upstream barrel gaps are named and tolerated, any
+  diagnostic inside the artifact still fails the gate, and emptying the
+  provisioning reproduces the failure it was written to catch. The canary
+  resolves `latest`, `next` and `alpha`, hands each resolved version to its lane,
+  and FAILS a leg whose channel resolved but whose lane skipped.
+
+- **Compatibility claims are auditable.** `docs/compatibility.md` maps every
+  claim to a lane transcript or a harness `file:line`, gives the field-by-field
+  overlap decision (the official Models page natively edits `input`,
+  `contextWindow` and `maxTokens`; per-model `reasoningEfforts` and sparse
+  `modelOverrides` remain this plugin's), and records the known limitation that
+  an official-page edit of a pi-ai route writes the whole `models` array, which
+  makes `modelOverrides` illegal for that route.
 
 ## [0.0.4] - 2026-08-31
 
@@ -24,6 +94,14 @@ held to lives in `CONTRIBUTING.md`.
   `dsh-v<version>` git tag, so an upstream publish is tested against us
   on the next run — and a red channel opens ONE tracking issue instead of
   waiting to be noticed by hand.
+
+> **Superseded by 0.0.5 — read the 0.0.3/0.0.4 entries as history, not as current evidence.** The dual-generation
+> claims described above (the `connection.api` fallback, the hyphenated wire-code fold) describe a surface no supported
+> line still has: it is absent at both `0.1.5-rc.3` and `0.1.7-rc.1`, and 0.0.5 deleted that code. Those releases also
+> read their lane results through oracles later found stale — the integration lane matched a bundle-URL attribute shape
+> that stopped existing, and the functional lane asserted a settings document path that was retired — and their bundle
+> pins named `0.1.0-rc.7` without asserting which generation the boot actually served. `docs/compatibility.md` §6 has
+> the mechanism. Their "both live lanes pass" is a record of what those releases believed, not evidence for this one.
 
 ## [0.0.3] - 2026-08-29
 
