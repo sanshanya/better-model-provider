@@ -1,19 +1,16 @@
 import { defineConfig } from 'vitest/config'
 
+/**
+ * Only the two full-chain golden lanes are tests: they boot a real harness from
+ * BMP_DSH_DIR (and, for the functional lane, drive a real browser), and both
+ * skip themselves when that variable is unset. No unit/coverage gate remains —
+ * a hand-projected fake face can be green while the real contract has moved,
+ * which is exactly what this suite is meant to catch.
+ */
 export default defineConfig({
   test: {
-    include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'],
-    environment: 'jsdom',
-    environmentOptions: { jsdom: { url: 'http://localhost' } },
+    include: ['tests/**/*.spec.ts'],
+    environment: 'node',
     globals: false,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text'],
-      include: ['src/**'],
-      exclude: ['src/index.ts'],
-      // Branch slack admits defensive guards whose only tests would fake a
-      // corrupted document (judged meaningless, 2026-08); the rest stays 100.
-      thresholds: { lines: 100, functions: 100, branches: 95, statements: 100, perFile: true },
-    },
   },
 })

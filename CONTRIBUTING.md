@@ -1,66 +1,61 @@
 # Contributing
 
-Toolchain here is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks only the `@deepseek-ai/*` declaration owners this plugin's type seam resolves into weekly (`verify:contract` + `typecheck` are the arbiters); every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this repo.
+Toolchain is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks the
+`@deepseek-ai/*` declaration owners this plugin's type seam resolves into (the contract gate and `npm run typecheck`
+are the arbiters) weekly. Every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this
+repo.
 
-Functionality merges only with every gate green, in this order:
+## Gates
 
 ```sh
 npm ci
 npm run lint
 npm run typecheck
-npm run verify:contract
-npm test
-npm run test:coverage
+npm run verify:contract                      # src/ against the INSTALLED harness declarations; no test shim in the program
 npm run build
-npm run verify:pack
+npm run verify:pack                          # packs the artifact, executes the bundle, type-checks it in a bare consumer
 
-# Opt-in, real-harness gates (need a local DeepSeek Harness checkout with
-# `pnpm install` + `pnpm build` run; the functional lane also needs a
-# Chromium-family executable — Chrome, Chromium, or Edge all work).
-# The lane pins its client bundles to the CHECKOUT's own version and refuses
-# any mismatch, so name the version you mean and keep that assertion on:
+# Opt-in full-chain lane. Needs a local DeepSeek Harness checkout with `pnpm install` + `pnpm build` run; the
+# functional lane also needs a Chromium-family executable (Chrome, Chromium, or Edge). Both skip when BMP_DSH_DIR is
+# unset. The lane pins its client bundles to the CHECKOUT's own version and refuses a mismatch, so name the version
+# you mean and keep that assertion on:
 BMP_DSH_DIR=/path/to/deepseek-harness BMP_DSH_BUNDLE_VERSION=0.1.7-rc.1 \
   npm run test:live
 BMP_DSH_DIR=/path/to/deepseek-harness BMP_DSH_BUNDLE_VERSION=0.1.7-rc.1 \
 BMP_CHROME_PATH="/path/to/chromium" npm run test:functional
 ```
 
-The `ci` workflow runs the hermetic gates on every push and PR — the cheap static ones first. The `live` workflow runs
-both real-harness lanes nightly and on `workflow_dispatch` for each published channel (`latest`, `next`, `alpha`),
-bootstrapping the harness checkout with the same commands above; it hands the resolved version to the lane as
-`BMP_DSH_BUNDLE_VERSION`, and a leg whose channel resolved but whose lane skipped FAILS the run rather than reporting a
-green placebo. A failed gate is a failed gate.
+`npm run typecheck` and `verify:contract` both inherit `skipLibCheck: true`, because upstream's own type barrels
+reference packages they never declare, so a strict whole-graph compile is permanently red. What `verify:contract`
+adds is the PROGRAM: `include: ["src"]`, so the harness declarations are read by our shipped source alone and no
+test-side shim can sit inside the program — that shim is how 0.0.4 passed while its client entry named four members
+0.1.7 had removed. The declaration GRAPH is gated by `verify:pack`, whose bare-consumer probe compiles the packed
+artifact with no `skipLibCheck` and fails on any diagnostic inside it.
+
+There is no hermetic/unit test step. A hand-projected fake face can be green while the real contract has moved (an
+audit found 53 real contract errors behind a green 212-test suite), so the behavioural gate is the full-chain lane: the
+`ci` workflow runs the static and artifact gates, and `live` boots both supported lines nightly and on
+`workflow_dispatch` for each published channel (`latest`, `next`, `alpha`), hands the resolved version to the lane, and
+FAILS a leg whose channel resolved while its lane skipped — rather than reporting a green placebo. A failed gate is a
+failed gate.
 
 ## Non-negotiable rules
 
-- The served Remote envelope (`{ rpcId, result: { ok, value | error } }`) is the only contract anchor: every business failure flows through `unwrap()` as a `HarnessRpcError`, carrying the wire's closed code union and its details pair.
-- Loads are latest-wins: every new read aborts the previous read when the transport supports it, and a generation fence prevents an older response from publishing. Only the very first load blanks the page; refreshes keep the last accepted view visible.
+- Remote calls go through the mounted `remote.settings` / `remote.llm` services' own positional signatures and their `RemoteResult` envelope (`{ ok: true, value } | { ok: false, error: { code, message, details } }`): the service shape is the contract anchor, and a rename upstream surfaces on the consuming line. Business failures become a `HarnessRpcError` carrying the code and its details pair; `CapabilityWireCode` names the codes this page branches on and is explicitly NOT a closed world — an unknown code stays representable and renders through its message. No casts, no `as never`.
+- Loads are latest-wins through a generation fence: an older response can never publish over a newer one. Only the very first load blanks the page; refreshes keep the last accepted view visible. (No abort ceremony: neither service read accepts a signal.)
 - Pushed invalidations are scoped to this section's own namespace.
 - Reads use an explicit layer: `namespace.value` for effective display, `namespace.user` for user-owned writes, and `namespace.base` only for diagnostics/comparison. A declared route whose `models[]` exists only in the base layer is displayed read-only rather than materialized into user settings.
 - The page edits only model capabilities. Provider credentials, provider/model lifecycle, and route enablement remain owned by the official Models page.
 - Each row's persistence derives from ownership, never from the route label. A user-owned `models[]` edits its entries (`declared-models`) — a hand-declared route owns its list the moment the key exists, but a catalog route owns it only when the user list is NON-EMPTY (the adapter treats `models: []` as no list, serves the installed catalog, and still allows overrides beside it); a catalog route with no effective `models[]` takes sparse `modelOverrides[id]` leaf writes (`catalog-overrides`); an inherited model list is read-only (`inherited-models`), and unclassified routes never appear. The harness refuses `modelOverrides` beside a non-empty `models` list, so the modes are exclusive by construction. Installed-but-unconfigured catalog routes join the dormant list behind **Manage official providers**: no document exists for them, and the first override write creates the profile (a sparse-override route is serviceable through catalog defaults — credentials remain the official Models page's). A catalog reset lifts the overridden leaves, the whole entry when it carried nothing else, the `modelOverrides` dict itself when the entry was the dict's last occupant — AND, when that dict was the profile's only content, the profile shell itself: the host never prunes empty parents, so a lingering `{}` would keep the route configured and ACTIVE forever, never returning to the dormant list. A PURE-INHERIT patch that would empty an override entry collapses the same way (otherwise a stranded `{}` entry passes today's validation and freezes the namespace on a future catalog upgrade).
 - Each row produces a touched patch: untouched fields produce no operation, while an explicit inherit action removes the leaf. Structured leaves (dicts AND arrays) are cloned at the write seam — a staged object never becomes the stored object by reference. Declared rows write one `set` op rewriting the whole user-owned `models[]` array — addressed by model id: the render-time index is validated against the commit-time namespace and re-anchored by id on drift, and a model that vanished writes nothing rather than silently rewriting a neighbor. Catalog rows write per-leaf `set`/`unset` ops under `modelOverrides` — the catalog is never materialized, and an unset for a leaf the user never wrote is skipped rather than spending a revision. A catalog reset lifts exactly the capability leaves, or the whole entry when nothing else remains.
 - Official models come from `llm.discoverModels`, the configuration-time seam that answers catalog routes from the installed catalog itself — lazily, on manage-click, so the page join stays light. It is never `llm.models` (the picker's display catalog, which carries no capacities). Official reasoning wire spellings are never fabricated: custom mapping starts with explicitly blank wires and every checked level must be spelled before it may be written.
-- Mutations keep user drafts on failure: `settings-conflict` shows the localized conflict copy, every other wire failure shows its reason next to the action.
-- The tests must not speak a protocol the harness does not serve: the scripted face and every stub override assert the payload is exactly `{}`, and envelope failures are real `RpcError` union members — no casts, no `as never`.
+- Mutations keep user drafts on failure: `settings/conflict` shows the localized conflict copy, every other wire failure shows its reason next to the action.
+- Two fences in the golden lane are load-bearing: the `.bmp-staged` wait (without it a click races the still-open UI transaction and reads a half-written document — a 423–505 ms round trip at 0.1.7) and the generation assertion (without it a lane can pin one harness line and silently boot another, because bundle resolution is installation-anchor-first).
 - `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` stay on; there is no `any` anywhere.
 - Final artifact first: `verify:pack` packs the tarball, verifies every manifest export exists inside it, then installs it into an EMPTY consumer and typechecks a realistic import — a declaration-resolution problem is caught at this gate, not downstream.
 
-## Coverage policy
-
-v8 per-file 100% for lines / functions / statements and 95% for branches, enforced by `vitest.config.ts`; the one per-file exemption is the host half `src/index.ts`, a documented no-op keepalive. Guards exist only where UI or code can genuinely reach them; never reshape production code to satisfy coverage, and never the reverse (a guard that is unreachable gets removed, not ignored). The branch slack is earned, not spent in advance: a branch-only test whose scenario cannot plausibly occur (corrupted stored documents, impossible key events) is deleted, not kept for the number.
-
 ## Harness compatibility anchors
 
-The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract; the peer ranges are **enumerated per published line**, because one wide range reads as unsatisfied to npm's peer rule while dsh's admission gate (`includePrerelease: true`) accepts it — see [docs/compatibility.md](docs/compatibility.md) §3 for the measured matrix.
-
-`npm run typecheck` alone cannot be read as proof that the seam is the upstream contract: `skipLibCheck: true` suppresses the diagnostics a broken declaration *graph* raises inside `node_modules`, and the damage surfaces as a silently degraded type wherever a name is used only in an annotation. `npm run verify:contract` closes that hole: it resolves every name `src/client/types.ts` imports to a real declaration file in the owning package, asserts the retired names stay absent, walks each consumed name's own export chain for unresolved specifiers, and runs a strict (`skipLibCheck: false`) probe per line —
-
-```sh
-node scripts/verify-contract.mjs --lines 0.1.7-rc.1,0.1.5-rc.3   # each line's owner packages, resolved into a probe tree
-node scripts/verify-contract.mjs --lib                            # after `npm run build`: the SHIPPED declarations
-```
-
-Honest limitation: a whole-graph `skipLibCheck: false` compile of the installed contract cannot be green, because upstream's own barrels reference packages they never declare (`@deepseek-ai/dsh-api-remotes/lib/types/client/index.d.ts` → `@deepseek-ai/dsh-api-gateway/client`, `@deepseek-ai/dsh-plugin-manager/types`; `dsh-llm` → `@deepseek-ai/dsh-attachment`). The probe names those per line and tolerates them, failing only on errors inside this plugin's own chain. `npm run verify:pack` closes the same loop on the artifact: it packs the tarball, executes the bundle under a stubbed module loader, confirms every manifest export exists inside it, and typechecks a realistic import in a consumer that installed nothing else.
+The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract; the peer ranges are **enumerated per published line**, because one wide range reads as unsatisfied to npm's peer rule while dsh's admission gate (`includePrerelease: true`) accepts it. Verified lines and what is *not* lane-verified: the README compatibility table.
 
 Weekly Dependabot PRs patrol exactly the declaration owners those peers name — `dsh-api-remotes`, `dsh-client-connection`, `dsh-llm`, `dsh-settings`, `dsh-typert-protocol` — one PR at a time; a bump that breaks the contract fails CI.

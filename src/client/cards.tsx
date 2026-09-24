@@ -14,7 +14,7 @@ import type { CapabilitiesController, CapabilityRowView, CapabilityWriteMode } f
 import { messageOf } from './store.ts'
 import type { CapabilityPatch } from './writes.ts'
 import { catalogEditOps, declaredEditOps, hasCapabilityOverride, resetOverrideOps } from './writes.ts'
-import type { DiscoveredModelView } from './types.ts'
+import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { formatCapacity } from './capacity.ts'
 import { ModelRow } from './rows.tsx'
 
@@ -127,7 +127,7 @@ function DeclaredCard(props: ProviderCardProps): ReactElement {
 type CatalogDiscovery =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; models: readonly DiscoveredModelView[] }
+  | { status: 'ready'; models: readonly LlmDiscoveredModel[] }
   | { status: 'error'; message: string }
 
 /**

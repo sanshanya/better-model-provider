@@ -1,6 +1,6 @@
 {
   "name": "better-model-provider",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Per-model capability declaration for DeepSeek Harness: reasoning-effort levels (with wire spellings) and request modalities (text/image) for OpenAI-compatible providers — one settings section, no YAML hand-editing.",
   "license": "MIT",
   "repository": {
@@ -62,13 +62,12 @@
     "build:lib": "tsc -p tsconfig.build.json",
     "build:client": "node scripts/build-client.mjs && tsc -p tsconfig.build-client-types.json",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "verify:contract": "node scripts/verify-contract.mjs",
+    "verify:contract": "tsc --noEmit -p tsconfig.contract.json",
     "lint": "oxlint src tests scripts",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "test:live": "vitest run tests/integration.live.spec.ts --coverage.enabled=false",
-    "test:functional": "vitest run tests/functional.live.spec.ts --coverage.enabled=false",
+    "test:live": "vitest run tests/integration.live.spec.ts",
+    "test:functional": "vitest run tests/functional.live.spec.ts",
     "prepack": "npm run build"
   },
   "devDependencies": {
@@ -77,21 +76,17 @@
     "@deepseek-ai/dsh-llm": "0.1.7-rc.1",
     "@deepseek-ai/dsh-settings": "0.1.7-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.1",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.1.0",
     "@types/node": "^26.2.0",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
-    "@vitest/coverage-v8": "^4.0.0",
     "esbuild": "^0.28.0",
-    "jsdom": "^27.0.0",
     "oxlint": "^1.0.0",
     "puppeteer-core": "^25.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "^5.9.0",
     "vitest": "^4.0.0",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "3.18.1"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

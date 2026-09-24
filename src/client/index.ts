@@ -14,7 +14,7 @@ import { resolveRemoteApiGently } from './wire.ts'
 import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import type { CapabilitiesSectionInjected } from './CapabilitiesSection.tsx'
 import { en, zh, type CapsKey, type TFn } from './locales.ts'
-import type { ClientShim, IRemoteApi } from './types.ts'
+import type { ClientShim, RemoteApi } from './types.ts'
 import { STYLES } from './styles.ts'
 
 /** Stable plugin id, matching the cordis.patch.yml row and the bundle id. */
@@ -66,7 +66,7 @@ export function apply(ctx: ClientShim): void {
  * @param ctx - client root context, narrowed to the services this plugin uses.
  * @param api - the resolved Remote face the page speaks.
  */
-function mount(ctx: ClientShim, api: IRemoteApi): void {
+function mount(ctx: ClientShim, api: RemoteApi): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'better-model-provider: dictionaries')
 
   const style = document.createElement('style')
