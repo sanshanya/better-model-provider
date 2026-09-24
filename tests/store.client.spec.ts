@@ -25,7 +25,7 @@ describe('vocabulary from the serialized schema', () => {
   })
 
   const bareNs = (schema: unknown): SettingsNamespaceView =>
-    ({ ns: 'x', value: {}, applies: 'live', secrets: [], schema: schema as SettingsNamespaceView['schema'], revision: 0 })
+    ({ ns: 'x', autoGenerate: false, value: {}, applies: 'live', secrets: [], schema: schema as SettingsNamespaceView['schema'], revision: 0 })
 
   test.each([
     ['no namespace', undefined, []],
@@ -247,10 +247,10 @@ describe('controller join', () => {
   test('business failures keep the wire error code', async () => {
     const arrange = defaultArrangement()
     const { api } = scriptedFace(arrange)
-    api.settings.mutate = () => Promise.resolve(envelopeError('settings-conflict', 'moved on'))
+    api.settings.mutate = () => Promise.resolve(envelopeError('settings/conflict', 'moved on'))
     const controller = new CapabilitiesController(api)
     await controller.load()
-    await expect(controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])).rejects.toMatchObject({ code: 'settings-conflict', name: 'HarnessRpcError' })
+    await expect(controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])).rejects.toMatchObject({ code: 'settings/conflict', name: 'HarnessRpcError' })
   })
 
   test('business failures on mutate throw the error message', async () => {
@@ -258,7 +258,7 @@ describe('controller join', () => {
     const { api } = scriptedFace(arrange)
     const controller = new CapabilitiesController(api)
     await controller.load()
-    api.settings.mutate = () => Promise.resolve(envelopeError('settings-conflict', 'revision moved'))
+    api.settings.mutate = () => Promise.resolve(envelopeError('settings/conflict', 'revision moved'))
     await expect(controller.commit(() => [{ op: 'set', path: ['providers', 'x'], value: {} }])).rejects.toThrow('revision moved')
   })
 
@@ -520,7 +520,7 @@ describe('controller join', () => {
       return [{ op: 'set', path: ['providers', 'second'], value: {} }]
     })
 
-    await expect(first).rejects.toMatchObject({ code: 'settings-conflict', name: 'HarnessRpcError' })
+    await expect(first).rejects.toMatchObject({ code: 'settings/conflict', name: 'HarnessRpcError' })
     await expect(second).resolves.toBe(true)
 
     expect(seen).toEqual([1, 2])
@@ -533,7 +533,7 @@ describe('controller join', () => {
 describe('writeModeOf', () => {
   const entry = (declared: boolean | undefined): ConfigurableProviderView => ({
     provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai',
-    settingsPath: ['providers', 'openai'], active: true,
+    settingsPath: ['providers', 'openai'],
     ...(declared === undefined ? {} : { declared }),
   })
   const withProfile = (profile: Record<string, unknown>, opts?: { base?: Record<string, unknown> }): ReturnType<typeof piAiNamespace> => {

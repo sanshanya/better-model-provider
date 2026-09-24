@@ -1,0 +1,10 @@
+{
+  "snapshot": "tests/rosters/dsh-0.1.7-rc.1.json",
+  "distTag": "next",
+  "resolvedFrom": "@deepseek-ai/dsh dist-tags.next",
+  "resolvedVersion": "0.1.7-rc.1",
+  "resolvedAt": "2026-09-24T07:05:35.973Z",
+  "rows": 65,
+  "command": "node scripts/roster.mjs next --meta tests/rosters/dsh-0.1.7-rc.1.meta.json",
+  "regenerate": "node scripts/roster.mjs next --meta tests/rosters/dsh-0.1.7-rc.1.meta.json > tests/rosters/dsh-0.1.7-rc.1.json"
+}

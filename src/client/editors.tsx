@@ -15,9 +15,13 @@ import { HarnessRpcError } from './types.ts'
 import { messageOf } from './store.ts'
 import { CAPACITY_HINT } from './capacity.ts'
 
-/** Surface a rejected write: settings-conflict gets the localized, actionable message. */
+/**
+ * Surface a rejected write: a revision conflict (`settings/conflict`, produced
+ * by the settings controller at dsh 0.1.7) gets the localized, actionable
+ * message; every other code renders through its own wire `message`.
+ */
 export function writeErrorText(caught: unknown, t: TFn): string {
-  if (caught instanceof HarnessRpcError && caught.code === 'settings-conflict') return t('conflict')
+  if (caught instanceof HarnessRpcError && caught.code === 'settings/conflict') return t('conflict')
   return messageOf(caught)
 }
 

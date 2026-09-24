@@ -61,7 +61,7 @@ describe('packed client bundle', () => {
     expect(bundle.id).toBe('better-model-provider')
     const exports = bundle.factory(shellRequire)
     expect(exports.name).toBe('better-model-provider')
-    expect(exports.inject).toEqual(['slots', 'locale', 'connection', 'remote'])
+    expect(exports.inject).toEqual(['slots', 'locale', 'remote'])
     expect(typeof exports.apply).toBe('function')
     expect(typeof exports.CapabilitiesSection).toBe('function')
   })

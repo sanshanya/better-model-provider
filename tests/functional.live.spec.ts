@@ -5,7 +5,6 @@
  * (BMP_DSH_DIR + BMP_CHROME_PATH).
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import puppeteer, { type Browser, type Page } from 'puppeteer-core'
 import { beforeAll, afterAll, describe, expect, test } from 'vitest'
 import { liveBoot, liveBootAvailable, type LiveBoot } from './live-boot.ts'
@@ -17,8 +16,17 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
   let boot: LiveBoot
   let browser: Browser
   let page: Page
+  /**
+   * Absolute path of the live settings document, settled in {@link beforeAll}
+   * for the generation under test. Generations disagree on where it lives —
+   * the 0.1.7 line imports the home-level document once and keeps writing the
+   * profile's `cordis.patch.yml`, older lines keep `<DSH_HOME>/settings.yaml`
+   * live — so every assertion reads the file the harness actually writes
+   * instead of a path that happens to have been right in an earlier year.
+   */
+  let settingsPath: string
 
-  const settingsYaml = (): string => readFileSync(join(boot.dshHome, 'settings.yaml'), 'utf8')
+  const settingsYaml = (): string => readFileSync(settingsPath, 'utf8')
 
   /** Poll the persisted settings document until a predicate holds (async writes race a single read). */
   async function waitForYaml(predicate: (yaml: string) => boolean): Promise<void> {
@@ -27,14 +35,39 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
       if (predicate(settingsYaml())) return
       await new Promise(resolve => setTimeout(resolve, 250))
     }
-    throw new Error(`settings.yaml never reached the expected state; it reads:\n${settingsYaml()}`)
+    throw new Error(`the settings document never reached the expected state (${settingsPath}); it reads:\n${settingsYaml()}`)
+  }
+
+  /**
+   * Wait until the page's own marker says the last commit settled.
+   *
+   * `waitForYaml` proves the write LANDED; it does not prove the page is done
+   * with it, and on 0.1.7-rc.1 the two are far apart: the harness flushes the
+   * profile patch and pushes `settings/document-updated` while the entry
+   * reconciles, and only then answers `settings.mutate` — measured round trips
+   * 420-505ms, with the document readable ~250ms before the reply, against
+   * 10-34ms on 0.1.5-rc.3's file-backed writer, where the reply beats any read.
+   * Driving the UI off the document alone therefore races the reply on 0.1.7:
+   * the row is still busy and staged, its reset control is not rendered yet,
+   * and a just-onboarded catalog card is still the pre-write dormant instance
+   * with its manage gate open — the exact "no button contains …" misses this
+   * file once produced there. The staged badge disappears only when `commit()`
+   * clears the draft, i.e. after the mutation landed AND the commit's rejoin
+   * published, so it is the UI-side fence for "the write is fully applied".
+   */
+  async function waitForCommitSettled(): Promise<void> {
+    await page.waitForFunction(() => !document.querySelector('.bmp-staged'), { timeout: 60_000 })
   }
 
   beforeAll(async () => {
     boot = await liveBoot({
       seeds: {
-        // The document is namespace-keyed at the top; the plugin edits the
-        // llm-pi-ai section. Profile shape mirrors the real wire contract.
+        // The home-level document is namespace-keyed at the top and the plugin
+        // edits the llm-pi-ai section; older generations write it in place,
+        // while the 0.1.7 line imports it once into the profile's patch
+        // document (same namespace, nested under the entry's `config`). Either
+        // way this seed is the portable way in — the boot settles which file
+        // is live and `settingsYaml()` follows it.
         'settings.yaml': [
           'llm-pi-ai:',
           '  providers:',
@@ -74,6 +107,10 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     // The SPA keeps a long-lived WebSocket, so networkidle never settles; the
     // real readiness marker is the rendered shell chrome.
     await page.waitForSelector('button, [role=button]', { visible: true, timeout: 60_000 })
+    // Settle which document this generation writes BEFORE any assertion reads
+    // it (bounded; the import marker appears during boot on the 0.1.7 line).
+    settingsPath = await boot.settingsDocument()
+    console.log(`live functional: dsh ${boot.bundleVersion} profile=${boot.profileDir} settings=${settingsPath}`)
   }, 300_000)
 
   afterAll(async () => {
@@ -322,6 +359,9 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     await typeCapacity(['Context window', '上下文窗口'], '64K')
     await clickWithText('button', ['应用', 'Apply'], 'openai')
     await waitForYaml(yaml => yaml.includes('modelOverrides:') && yaml.includes('contextWindow: 64000'))
+    // The leaf is on disk; the row renders its reset control only once the
+    // commit's own rejoin published — fence on the UI before clicking it.
+    await waitForCommitSettled()
 
     await clickWithText('button', ['还原为官方默认', 'Reset to official defaults'], 'openai')
     await waitForYaml(yaml => !yaml.includes('contextWindow: 64000'))
@@ -355,6 +395,10 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     await typeCapacity(['Context window', '上下文窗口'], '64K', 'anthropic')
     await clickWithText('button', ['应用', 'Apply'], 'anthropic')
     await waitForYaml(yaml => yaml.includes('anthropic:') && yaml.includes('contextWindow: 64000'))
+    // The document carries the route; the card is still the pre-write dormant
+    // instance until the commit's rejoin publishes, so its manage gate is still
+    // open and no manage button exists yet — fence on the UI first.
+    await waitForCommitSettled()
     // The first write configures the route: the card jumps from the dormant
     // region into the configured list, re-mounting with its manage gate
     // closed — manage it again before the row shows.

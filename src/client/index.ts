@@ -23,8 +23,20 @@ export const name = 'better-model-provider'
 /** Dictionary namespace owned by this plugin. */
 const NS = 'better-model-provider'
 
-/** Cordis fiber dependencies of the browser half. */
-export const inject = ['slots', 'locale', 'connection', 'remote']
+/**
+ * Cordis fiber dependencies of the browser half.
+ *
+ * `connection` is deliberately absent: the page no longer reads `ctx.connection`
+ * (the ≤0.1.1 namespaced `api` fallback is gone) and its only remaining use of
+ * that package is the `connection/reset` EVENT, which needs no service
+ * dependency. The service is still provided in every shipped profile — the
+ * web-app bundle mounts `@deepseek-ai/dsh-client-connection` itself
+ * (`packages/bundle/web-app/cordis.patch.yml:197-198` at `dsh-v0.1.7-rc.1`) —
+ * so the event keeps firing. Declaring a service this fiber does not read would
+ * only leave it pending until that provider arrives, and a pending client fiber
+ * fails the whole page (`packages/client/web/src/boot-client.ts:66-88`).
+ */
+export const inject = ['slots', 'locale', 'remote']
 
 /** Refetch the page only after its first load. */
 export function refreshIfLoaded(controller: CapabilitiesController): void {
@@ -52,7 +64,7 @@ export function apply(ctx: ClientShim): void {
  * and the stylesheet; every contribution disposes with the plugin fiber.
  * Runs exactly once, the first time the Remote face resolves.
  * @param ctx - client root context, narrowed to the services this plugin uses.
- * @param api - the resolved legacy-shaped Remote face (either generation).
+ * @param api - the resolved Remote face the page speaks.
  */
 function mount(ctx: ClientShim, api: IRemoteApi): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'better-model-provider: dictionaries')

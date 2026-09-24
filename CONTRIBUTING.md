@@ -1,6 +1,6 @@
 # Contributing
 
-Toolchain here is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks only the `@deepseek-ai/*` contract family weekly (typecheck is the arbiter); every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this repo.
+Toolchain here is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks only the `@deepseek-ai/*` declaration owners this plugin's type seam resolves into weekly (`verify:contract` + `typecheck` are the arbiters); every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this repo.
 
 Functionality merges only with every gate green, in this order:
 
@@ -8,6 +8,7 @@ Functionality merges only with every gate green, in this order:
 npm ci
 npm run lint
 npm run typecheck
+npm run verify:contract
 npm test
 npm run test:coverage
 npm run build
@@ -15,16 +16,20 @@ npm run verify:pack
 
 # Opt-in, real-harness gates (need a local DeepSeek Harness checkout with
 # `pnpm install` + `pnpm build` run; the functional lane also needs a
-# Chromium-family executable — Chrome, Chromium, or Edge all work):
-BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live
-BMP_DSH_DIR=/path/to/deepseek-harness \
+# Chromium-family executable — Chrome, Chromium, or Edge all work).
+# The lane pins its client bundles to the CHECKOUT's own version and refuses
+# any mismatch, so name the version you mean and keep that assertion on:
+BMP_DSH_DIR=/path/to/deepseek-harness BMP_DSH_BUNDLE_VERSION=0.1.7-rc.1 \
+  npm run test:live
+BMP_DSH_DIR=/path/to/deepseek-harness BMP_DSH_BUNDLE_VERSION=0.1.7-rc.1 \
 BMP_CHROME_PATH="/path/to/chromium" npm run test:functional
 ```
 
-The `ci` workflow runs the hermetic gates on every push and PR. The `live`
-workflow runs both real-harness lanes nightly and on `workflow_dispatch`,
-bootstrapping the harness checkout with the same commands above. A failed
-gate is a failed gate.
+The `ci` workflow runs the hermetic gates on every push and PR — the cheap static ones first. The `live` workflow runs
+both real-harness lanes nightly and on `workflow_dispatch` for each published channel (`latest`, `next`, `alpha`),
+bootstrapping the harness checkout with the same commands above; it hands the resolved version to the lane as
+`BMP_DSH_BUNDLE_VERSION`, and a leg whose channel resolved but whose lane skipped FAILS the run rather than reporting a
+green placebo. A failed gate is a failed gate.
 
 ## Non-negotiable rules
 
@@ -47,4 +52,15 @@ v8 per-file 100% for lines / functions / statements and 95% for branches, enforc
 
 ## Harness compatibility anchors
 
-The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract (peerDependency `^0.1.0-rc.7`, devDependency for local development). An upstream drift shows up as a typecheck failure in `npm ci` in any new env, and weekly Dependabot PRs fail CI when the bump breaks the contract.
+The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract; the peer ranges are **enumerated per published line**, because one wide range reads as unsatisfied to npm's peer rule while dsh's admission gate (`includePrerelease: true`) accepts it — see [docs/compatibility.md](docs/compatibility.md) §3 for the measured matrix.
+
+`npm run typecheck` alone cannot be read as proof that the seam is the upstream contract: `skipLibCheck: true` suppresses the diagnostics a broken declaration *graph* raises inside `node_modules`, and the damage surfaces as a silently degraded type wherever a name is used only in an annotation. `npm run verify:contract` closes that hole: it resolves every name `src/client/types.ts` imports to a real declaration file in the owning package, asserts the retired names stay absent, walks each consumed name's own export chain for unresolved specifiers, and runs a strict (`skipLibCheck: false`) probe per line —
+
+```sh
+node scripts/verify-contract.mjs --lines 0.1.7-rc.1,0.1.5-rc.3   # each line's owner packages, resolved into a probe tree
+node scripts/verify-contract.mjs --lib                            # after `npm run build`: the SHIPPED declarations
+```
+
+Honest limitation: a whole-graph `skipLibCheck: false` compile of the installed contract cannot be green, because upstream's own barrels reference packages they never declare (`@deepseek-ai/dsh-api-remotes/lib/types/client/index.d.ts` → `@deepseek-ai/dsh-api-gateway/client`, `@deepseek-ai/dsh-plugin-manager/types`; `dsh-llm` → `@deepseek-ai/dsh-attachment`). The probe names those per line and tolerates them, failing only on errors inside this plugin's own chain. `npm run verify:pack` closes the same loop on the artifact: it packs the tarball, executes the bundle under a stubbed module loader, confirms every manifest export exists inside it, and typechecks a realistic import in a consumer that installed nothing else.
+
+Weekly Dependabot PRs patrol exactly the declaration owners those peers name — `dsh-api-remotes`, `dsh-client-connection`, `dsh-llm`, `dsh-settings`, `dsh-typert-protocol` — one PR at a time; a bump that breaks the contract fails CI.

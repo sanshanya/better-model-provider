@@ -1,47 +1,50 @@
 /**
- * Dual-generation Remote adapter. dsh ≤0.1.1-rc.2 carries the settings/llm
- * namespaces on the `connection.api` face; dsh 0.1.2-alpha.1 installs them as
- * traced `remote.<ns>` Cordis services whose generated Typert proxies take
- * positional arguments, rename `providers` to `listConfigurableProviders`,
- * and resolve the slimmer `RemoteResult` envelope (no outer `rpcId`/`result`
- * wrapper, values unboxed from their `{providers}`/`{models}` carriers);
- * 0.1.2-alpha.2 then wraps owner failures in `RemoteError` and rebadges the
- * hyphen codes into slash namespaces. The page logic keeps speaking ONE face
- * — {@link IRemoteApi}, the legacy published contract, with those renames
- * folded back — so this module is the only place that knows both generations.
+ * Remote adapter, current generation only. dsh installs the settings/llm
+ * namespaces as traced `remote.<ns>` Cordis services whose generated Typert
+ * proxies take positional arguments, rename `providers` to
+ * `listConfigurableProviders`, and resolve the slim `RemoteResult` envelope
+ * (no outer `rpcId`/`result` wrapper, values unboxed from their
+ * `{providers}`/`{models}` carriers); owner failures ride that envelope's
+ * error arm as `RemoteError` with the slash-namespaced codes. The page logic
+ * keeps speaking ONE face — {@link IRemoteApi}, the carrier frame declared in
+ * `types.ts` — so this module is the only place that knows the service-side
+ * call shapes.
  *
- * The alpha-generation METHOD SIGNATURES are hand-projected here from the
- * generated clients in the harness checkout: the npm-published
- * `@deepseek-ai/dsh-api-remotes` predates the refactor (see the
- * peer-dependency note in package.json), so typecheck can only pin the legacy
- * branch directly. The VALUE shapes need no projection — both generations
- * serve the same views — so the alpha faces below derive theirs from the
- * legacy method types, and `tests/wire.client.spec.ts` pins every projected
- * signature against the runtime behavior of both generations.
+ * The service-side shapes are unchanged from 0.1.2-alpha.1 through the
+ * 0.1.5-rc.3 and 0.1.7-rc.1 lines: the generated clients at `dsh-v0.1.7-rc.1`
+ * (`packages/api/settings-controller/lib/typert.remote-client.d.ts`,
+ * `packages/llm/llm/lib/typert.remote-client.d.ts`) declare exactly
+ * `describe()`, `mutate(ns, ops, expectedRevision)`,
+ * `listConfigurableProviders()` and `discoverModels(settingsNs, request,
+ * signal?)`, all answering `RemoteResult<…>`.
+ *
+ * The ≤0.1.1 generation is GONE from this module: namespaced `api` face does not
+ * exist on any line this package claims (the service is
+ * `ctx.provide('connection', handle)`,
+ * `packages/client/connection/src/client/index.ts:310` at `dsh-v0.1.7-rc.1`,
+ * and `git grep '\.api\b' dsh-v0.1.5-rc.3 -- packages/client/connection/src` is
+ * empty), no lane this package runs could reach it, and the hyphen→slash code
+ * fold it existed to serve was incomplete besides (it folded
+ * `settings/conflict` while `settings/rejected`,
+ * `llm/model-discovery-rejected`, `credential/rejected` and `gateway/*`
+ * arrived unfolded).
+ *
+ * The service-side METHOD SIGNATURES stay projected here rather than
+ * imported: the generated files live in the per-namespace owner packages this
+ * plugin does not depend on and name their interfaces with hashed service
+ * keys, while the page speaks ONE face. The projection is therefore pinned by
+ * `tests/wire.client.spec.ts` against the runtime behavior of the services.
+ * The ENVELOPE is not hand-declared: `RemoteResult` and `RemoteFailure` are
+ * the published contract's own types, and the carrier frame reuses the
+ * contract's `RpcResponse`/`RpcResult`.
  *
  * @module better-model-provider/wire
  */
 
 import type {
   ClientShim, ConfigurableProviderView, DiscoveredModelView, IRemoteApi,
-  RpcError, RpcId, RpcResponse, Unsubscribe,
+  RemoteFailure, RemoteResult, RpcId, RpcResponse, Unsubscribe, WireFailure,
 } from './types.ts'
-
-/**
- * Slim Remote failure carried by the alpha generation's error branch: a
- * code-discriminated `RemoteError` union instance since alpha.2, wire-cardinal
- * `code`/`message`/`details` fields throughout both alphas.
- */
-interface AlphaRemoteFailure {
-  readonly code: string
-  readonly message: string
-  readonly details: object
-}
-
-/** `RemoteResult<T>` of the alpha.1 generation: no `rpcId`, no `result` wrapper. */
-type AlphaRemoteResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: AlphaRemoteFailure }
 
 /** Legacy method aliases so the adapter's signatures stay upstream-derived, not re-typed. */
 type DescribeFn = IRemoteApi['settings']['describe']
@@ -52,110 +55,104 @@ type MutatePayload = Parameters<MutateFn>[0]
 type DiscoverPayload = Parameters<DiscoverFn>[0]
 
 /** The business value one legacy face method's success envelope carries. */
-type LegacyValue<F extends (...args: never[]) => unknown> =
+type PageValue<F extends (...args: never[]) => unknown> =
   Awaited<ReturnType<F>> extends RpcResponse<infer V> ? V : never
 
 /**
- * Face projection of the alpha.1 `remote.settings` Cordis service
- * (`packages/api/settings-controller/lib/typert.remote-client.d.ts`):
- * `describe` drops its validated-empty payload entirely, `mutate` goes
- * positional. Value shapes derive from the legacy contract.
+ * Face projection of the `remote.settings` Cordis service
+ * (`packages/api/settings-controller/lib/typert.remote-client.d.ts` at
+ * `dsh-v0.1.7-rc.1`): `describe` drops its validated-empty payload entirely,
+ * `mutate` goes positional. Value shapes derive from the page's own face.
  */
-interface AlphaSettingsRemote {
-  describe(): Promise<AlphaRemoteResult<LegacyValue<DescribeFn>>>
+interface SettingsServiceFace {
+  describe(): Promise<RemoteResult<PageValue<DescribeFn>>>
   mutate(
     ns: MutatePayload['ns'],
     ops: MutatePayload['ops'],
     expectedRevision: MutatePayload['expectedRevision'],
-  ): Promise<AlphaRemoteResult<LegacyValue<MutateFn>>>
+  ): Promise<RemoteResult<PageValue<MutateFn>>>
 }
 
 /**
- * Face projection of the alpha.1 `remote.llm` Cordis service
- * (`packages/llm/llm/lib/typert.remote-client.d.ts`): `providers` is renamed
- * `listConfigurableProviders` and answers the BARE provider array;
- * `discoverModels` takes the namespace positionally with the remaining draft
- * fields as its request, answering the BARE models array.
+ * Face projection of the `remote.llm` Cordis service
+ * (`packages/llm/llm/lib/typert.remote-client.d.ts` at `dsh-v0.1.7-rc.1`):
+ * `providers` is renamed `listConfigurableProviders` and answers the BARE
+ * provider array; `discoverModels` takes the namespace positionally with the
+ * remaining draft fields as its request, answering the BARE models array.
  */
-interface AlphaLlmRemote {
-  listConfigurableProviders(): Promise<AlphaRemoteResult<ConfigurableProviderView[]>>
+interface LlmServiceFace {
+  listConfigurableProviders(): Promise<RemoteResult<ConfigurableProviderView[]>>
   discoverModels(
     settingsNs: DiscoverPayload['settingsNs'],
     request: Omit<DiscoverPayload, 'settingsNs'>,
     signal?: AbortSignal,
-  ): Promise<AlphaRemoteResult<DiscoveredModelView[]>>
+  ): Promise<RemoteResult<DiscoveredModelView[]>>
 }
 
 /**
- * The ONE carrier id for every synthetic envelope: the legacy RpcResponse
- * frame REQUIRES an `rpcId` echo, but nothing consumes its uniqueness —
- * business code only ever logs it — so a per-call counter was state
- * without semantics, and a plain constant reads as exactly what it is.
+ * The ONE carrier id for every re-framed envelope: the carrier frame this page
+ * speaks REQUIRES an `rpcId` echo, but nothing consumes its uniqueness —
+ * business code only ever logs it — so a per-call counter was state without
+ * semantics, and a plain constant reads as exactly what it is.
  */
-const ALPHA_RPC_ID = 'bmp-alpha' as RpcId
+const CARRIER_RPC_ID = 'bmp-carrier' as RpcId
 
 /**
- * alpha.2 rebadged the hyphen wire codes into slash namespaces
- * (`settings-conflict` → `settings/conflict`) with details unchanged; the
- * page branches on the legacy union, so the adapter folds the renames back.
+ * Carry one service-side failure into the carrier failure frame fieldwise,
+ * never as a spread: a `RemoteError` instance has its `message`
+ * Error-inherited and non-enumerable, so `{...error}` would silently drop it.
+ * The code travels UNTRANSLATED — the page compares the current spellings the
+ * host produces — and the CAS details (`{ns, expected, actual}`) cross as they
+ * are, so the store's conflict branch stays put.
  */
-const ALPHA_TO_LEGACY_CODES: Readonly<Record<string, RpcError['code']>> = {
-  'settings/conflict': 'settings-conflict',
-}
-
-/** Fold an alpha failure into the legacy RpcError frame: translate the renamed codes, carry message/details. */
-function toLegacyError(error: AlphaRemoteFailure): RpcError {
-  // Fieldwise, never a spread: alpha.2's RemoteError instance has its `message`
-  // Error-inherited and non-enumerable, so `{...error}` would silently drop it.
+function toCarrierError(error: RemoteFailure): WireFailure {
   return {
-    code: ALPHA_TO_LEGACY_CODES[error.code] ?? error.code,
+    code: error.code,
     message: error.message,
     details: error.details,
-  } as RpcError
+  }
 }
 
 /**
- * Re-wrap the slim alpha envelope as the legacy carrier frame the page's
- * `unwrap` reads: stamp the shared `rpcId` echo the alpha no longer
- * carries, box the value arm, and translate the failure arm. The CAS details
- * (`{ns, expected, actual}`) survive the code rename untouched, so the
- * store's conflict branch stays put.
+ * Re-wrap the slim service envelope as the carrier frame the page's `unwrap`
+ * reads: stamp the shared `rpcId` echo the service envelope does not carry,
+ * box the value arm, and carry the failure arm across fieldwise.
  */
-function toLegacyEnvelope<T>(call: Promise<AlphaRemoteResult<T>>): Promise<RpcResponse<T>> {
+function toCarrierFrame<T>(call: Promise<RemoteResult<T>>): Promise<RpcResponse<T>> {
   return call.then(result =>
     result.ok
-      ? { rpcId: ALPHA_RPC_ID, result }
-      : { rpcId: ALPHA_RPC_ID, result: { ok: false, error: toLegacyError(result.error) } },
+      ? { rpcId: CARRIER_RPC_ID, result }
+      : { rpcId: CARRIER_RPC_ID, result: { ok: false, error: toCarrierError(result.error) } },
   )
 }
 
-/** Map the success arm of one alpha call, forwarding the failure arm untouched. */
-async function mapOk<T, U>(call: Promise<AlphaRemoteResult<T>>, f: (value: T) => U): Promise<AlphaRemoteResult<U>> {
+/** Map the success arm of one service call, forwarding the failure arm untouched. */
+async function mapOk<T, U>(call: Promise<RemoteResult<T>>, f: (value: T) => U): Promise<RemoteResult<U>> {
   const result = await call
   return result.ok ? { ok: true, value: f(result.value) } : result
 }
 
 /**
- * Adapt one complete alpha-generation pair into the legacy-shaped face. Both
- * services mount under one namespace fiber's ACTIVE transition, so a probe
- * that sees them together sees them fully usable.
+ * Adapt one complete service pair onto the face the page speaks. Both services
+ * mount under one namespace fiber's ACTIVE transition, so a probe that sees
+ * them together sees them fully usable.
  */
-function adaptAlpha(alphaSettings: AlphaSettingsRemote, alphaLlm: AlphaLlmRemote): IRemoteApi {
+function adaptServices(settingsService: SettingsServiceFace, llmService: LlmServiceFace): IRemoteApi {
   // `describe`'s payload is the validated-empty `{}` and its signal bounded
-  // only the legacy carrier, so neither crosses: the alpha method is
+  // only the page's carrier, so neither crosses: the service method is
   // parameterless by its generated declaration.
   const describe: DescribeFn = (_payload, _signal) =>
-    toLegacyEnvelope(alphaSettings.describe())
+    toCarrierFrame(settingsService.describe())
 
   const mutate: MutateFn = (payload, _signal) =>
-    toLegacyEnvelope(alphaSettings.mutate(payload.ns, payload.ops, payload.expectedRevision))
+    toCarrierFrame(settingsService.mutate(payload.ns, payload.ops, payload.expectedRevision))
 
   const providers: ProvidersFn = (_payload, _signal) =>
-    toLegacyEnvelope(mapOk(alphaLlm.listConfigurableProviders(), list => ({ providers: list })))
+    toCarrierFrame(mapOk(llmService.listConfigurableProviders(), list => ({ providers: list })))
 
   const discoverModels: DiscoverFn = (payload, signal) => {
     const { settingsNs, ...request } = payload
-    return toLegacyEnvelope(mapOk(alphaLlm.discoverModels(settingsNs, request, signal), models => ({ models })))
+    return toCarrierFrame(mapOk(llmService.discoverModels(settingsNs, request, signal), models => ({ models })))
   }
 
   return {
@@ -166,35 +163,33 @@ function adaptAlpha(alphaSettings: AlphaSettingsRemote, alphaLlm: AlphaLlmRemote
 
 /** One probe of the harness Remote assembly's readiness for this page. */
 type FaceProbe =
-  /** A complete face answered; `api` already speaks the legacy shape. */
+  /** A complete face answered; `api` already speaks the page's carrier frame. */
   | { readonly kind: 'ready'; readonly api: IRemoteApi }
-  /** Exactly one of the 0.1.2-alpha.1 pair answered; `awaiting` names the namespace still coming. */
+  /** Exactly one of the pair answered; `awaiting` names the namespace still coming. */
   | { readonly kind: 'partial'; readonly awaiting: 'remote.llm' | 'remote.settings' }
-  /** Neither generation answered. */
+  /** Neither namespace answered. */
   | { readonly kind: 'absent' }
 
 /** The not-ready half of a probe: either a partial pair or nothing at all. */
 type FaceProbeNotReady = Extract<FaceProbe, { readonly kind: 'partial' | 'absent' }>
 
 /**
- * Probe the Remote assembly once, alpha generation first. BOTH alpha
- * remotes are inspected before the legacy face is consulted, so a
- * half-born pair — in EITHER mount order — reads as partial (naming the
- * namespace still coming) and is never mistaken for a legacy-only or
- * faceless harness. The probe cannot ride `inject`: declaring
- * `remote.settings` on a ≤0.1.1 harness would park the plugin forever,
- * since that service is only born on 0.1.2.
+ * Probe the Remote assembly once. BOTH remotes are inspected before any
+ * conclusion, so a half-born pair — in EITHER mount order — reads as partial
+ * (naming the namespace still coming) and is never reported as faceless while
+ * one side is already up. The probe cannot ride `inject`: declaring
+ * `remote.settings` or `remote.llm` on the plugin's own fiber would park that
+ * fiber until the namespace mounts, and the mount order is asynchronous.
  */
 function probeRemoteApi(ctx: ClientShim): FaceProbe {
-  const alphaSettings = ctx.get('remote.settings') as AlphaSettingsRemote | undefined
-  const alphaLlm = ctx.get('remote.llm') as AlphaLlmRemote | undefined
-  if (alphaSettings !== undefined && alphaLlm !== undefined) {
-    return { kind: 'ready', api: adaptAlpha(alphaSettings, alphaLlm) }
+  const settingsService = ctx.get('remote.settings') as SettingsServiceFace | undefined
+  const llmService = ctx.get('remote.llm') as LlmServiceFace | undefined
+  if (settingsService !== undefined && llmService !== undefined) {
+    return { kind: 'ready', api: adaptServices(settingsService, llmService) }
   }
-  if (alphaSettings !== undefined) return { kind: 'partial', awaiting: 'remote.llm' }
-  if (alphaLlm !== undefined) return { kind: 'partial', awaiting: 'remote.settings' }
-  const legacy = ctx.connection.api
-  return legacy === undefined ? { kind: 'absent' } : { kind: 'ready', api: legacy }
+  if (settingsService !== undefined) return { kind: 'partial', awaiting: 'remote.llm' }
+  if (llmService !== undefined) return { kind: 'partial', awaiting: 'remote.settings' }
+  return { kind: 'absent' }
 }
 
 /**
@@ -218,27 +213,27 @@ const SERVICE_EVENT = 'internal/service'
 
 /**
  * The ONE diagnostic an idle page ever emits. Each not-ready kind is
- * transient on a healthy master boot (the alpha pair is mid-sequence or not
- * yet started) and permanent on a harness with no Remote layer at all, so
- * every message names what is missing AND promises the self-healing
- * follow-up — one firing covers both readings without a second, louder line.
- * A PARTIAL observation accuses exactly the namespace that has not answered
- * (whichever of the two that is — the alpha mounts the pair sequentially in
- * one order, but a page that lands mid-sequence must never be told
- * "neither" while one side is already up).
+ * transient on a healthy boot (the pair is mid-sequence or not yet started)
+ * and permanent on a harness with no Remote layer at all, so every message
+ * names what is missing AND promises the self-healing follow-up — one firing
+ * covers both readings without a second, louder line. A PARTIAL observation
+ * accuses exactly the namespace that has not answered (whichever of the two
+ * that is — the harness mounts the pair sequentially in one order, but a page
+ * that lands mid-sequence must never be told "neither" while one side is
+ * already up).
  */
 function notReadyWarning(probe: FaceProbeNotReady): string {
   if (probe.kind === 'absent') {
-    return 'better-model-provider: no harness Remote face is available yet — neither the remote.settings/remote.llm pair (dsh ≥0.1.2) nor connection.api (dsh ≤0.1.1) has arrived; the capabilities section stays idle and registers the moment either is announced'
+    return 'better-model-provider: no harness Remote face is available yet — the remote.settings/remote.llm pair has not arrived; the capabilities section stays idle and registers the moment it is announced'
   }
   return probe.awaiting === 'remote.llm'
-    ? 'better-model-provider: remote.settings answered but remote.llm has not — dsh ≥0.1.2 mounts its Remote namespaces sequentially; the capabilities section registers as soon as remote.llm arrives'
-    : 'better-model-provider: remote.llm answered but remote.settings has not — dsh ≥0.1.2 mounts its Remote namespaces sequentially; the capabilities section registers as soon as remote.settings arrives'
+    ? 'better-model-provider: remote.settings answered but remote.llm has not — the harness mounts its Remote namespaces sequentially; the capabilities section registers as soon as remote.llm arrives'
+    : 'better-model-provider: remote.llm answered but remote.settings has not — the harness mounts its Remote namespaces sequentially; the capabilities section registers as soon as remote.settings arrives'
 }
 
 /**
  * Resolve the Remote face the PAGE speaks, gently: attempt once; if the
- * assembly is still mounting (dsh 0.1.2-alpha.1 mounts its Remote namespaces
+ * assembly is still mounting (the harness mounts its Remote namespaces
  * SEQUENTIALLY — remote.settings lands before remote.llm, so a synchronous
  * apply can observe the pair half-born or not yet born), subscribe to
  * service arrivals and re-attempt until it completes, then `mount` exactly
