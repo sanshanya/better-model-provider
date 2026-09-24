@@ -8,9 +8,9 @@ README compatibility table.
 
 Subtraction release. Behaviour is unchanged — the sole full-chain gate is the
 golden lane, green on `dsh-v0.1.7-rc.1` and `dsh-v0.1.5-rc.3` — while 18 files
-are gone and 5,968 lines were deleted (`git diff --shortstat HEAD`: −5,968; the
-insertion side is dominated by the documentation that replaced the deleted
-tooling, so it is not cited as a fixed number).
+are gone and 5,968 lines were deleted (`git show --shortstat` on this release's
+commit: −5,968; the insertion side is dominated by the documentation that
+replaced the deleted tooling, so it is not cited as a fixed number).
 
 - Deleted the call adapter (`wire.ts` 292 → 136) and the contract mirror
   (`types.ts` 226 → 151): the page calls the mounted services' own signatures, so
@@ -27,6 +27,8 @@ tooling, so it is not cited as a fixed number).
   probe); `verify-pack` keeps its strict packed-artifact probe.
 - `@deepseek-ai/schemastery` pinned to `3.18.1`: the incidental `3.18.4`
   re-resolution added 1,615 bytes — 33% of the artifact — and no one chose it.
+  The pin rides an npm `overrides` entry: the type-owner devDeps this package
+  needs peer `~3.18.4`, so a plain direct pin makes `npm ci` fail on ERESOLVE.
 - Artifact 55,689 bytes (0.0.4: 56,642; 0.0.5: 58,462). `src/` 2,681 lines
   (0.0.4: 2,813). Tracked files 39 (0.0.4: 47). Verification tooling 122 lines
   (was 932) — 2 over the 120 this release aimed for, stated rather than hidden.
