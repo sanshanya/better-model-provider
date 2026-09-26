@@ -45,6 +45,10 @@ export const en = {
     + 'The API key still belongs to the official Models page.',
   officialUserList: 'official · user-listed',
   inheritedRoute: 'inherited list',
+  residualOverrides:
+    'Leftover catalog overrides sit beside this route\'s model list — write validation rejects '
+    + 'the route while both exist.',
+  removeResidualOverrides: 'Remove leftover overrides',
   adapterBoundary:
     'Routes owned by dedicated adapters (lived under llm-deepseek / llm-openai-codex) declare '
     + 'capabilities on their own settings pages and never appear here; a pi-ai catalog route of the '
@@ -104,6 +108,8 @@ export const zh: Record<CapsKey, string> = {
   dormantHint: '尚未配置——你应用的第一个覆盖即会创建该 profile。API 密钥仍在官方「模型」页设置。',
   officialUserList: '官方·自管',
   inheritedRoute: '继承清单',
+  residualOverrides: '此路由已有模型列表，与残留的目录覆盖并存——写入校验即判该路由非法。',
+  removeResidualOverrides: '移除残留覆盖',
   adapterBoundary: '专属适配器路由（如 llm-deepseek、llm-openai-codex 名下的）能力在它们自己的设置页声明，不会出现在本页；同品牌名的 pi-ai 目录路由是另一条路由，照常出现。',
   inheritedModelList: '此模型列表继承自当前组装，本页只读。',
   readOnly: '此视图下设置为只读',

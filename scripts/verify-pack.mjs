@@ -1,7 +1,8 @@
 /**
  * Artifact gate (run after `npm run build`): npm pack, then prove what a
- * downstream receives — every manifest-declared file is in the tarball, the
- * client bundle keeps the module-loader wrapper and exposes the plugin triple,
+ * downstream receives — every object-shaped exports entry plus main/types is in
+ * the tarball, the client bundle keeps the module-loader wrapper and exposes
+ * the plugin triple,
  * and the shipped declarations compile in a bare consumer (tarball + typescript
  * + the `@types` they need, NO skipLibCheck) where a diagnostic inside our own
  * files fails the run.

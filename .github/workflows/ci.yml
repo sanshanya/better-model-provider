@@ -66,7 +66,8 @@ jobs:
         run: |
           mkdir ../publish
           mv lib ../publish/lib
-          cp package.json cordis.patch.yml README.md README.zh.md CHANGELOG.md LICENSE ../publish/
+          cp package.json cordis.patch.yml icon.svg README.md README.zh.md CHANGELOG.md LICENSE ../publish/
+          cp -r locale ../publish/
       - name: overwrite master branch with build output
         run: |
           git config user.name "github-actions[bot]"

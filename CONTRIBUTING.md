@@ -3,7 +3,11 @@
 Toolchain is npm only — the lockfile is `package-lock.json`, CI runs `npm ci`, and Dependabot tracks the
 `@deepseek-ai/*` declaration owners this plugin's type seam resolves into (the contract gate and `npm run typecheck`
 are the arbiters) weekly. Every other dependency moves by deliberate commit. Do not mix pnpm/pnpm-lock files into this
-repo.
+repo. Against a RUNNING host process, adding or removing a `package.json` `exports` entry never
+takes effect — Node caches the package.json/exports map per process, so an export added mid-session
+keeps answering `ERR_PACKAGE_PATH_NOT_EXPORTED` until the host is restarted. Locale files under the
+already-exported `locale/*.json` wildcard (added or removed), icon bytes, and the CONTENT of an
+existing locale file are re-read on the spot; a page refresh is enough for those.
 
 ## Gates
 

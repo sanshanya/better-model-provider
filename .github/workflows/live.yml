@@ -142,6 +142,8 @@ jobs:
       # attribution; what it catches is the all-green-nothing-ran shape.
       - name: assert the resolved channel actually ran
         if: ${{ success() && steps.resolve.outputs.resolved == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           version='${{ steps.resolve.outputs.version }}'
@@ -172,6 +174,15 @@ jobs:
           fi
           echo "$channel $version: both lanes ran, no skips, generation asserted"
 
+          # Issue hygiene: a green leg closes this channel's still-open red
+          # trackers, pointing each at this run. || true keeps gh trouble off
+          # a green verdict.
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for n in $(gh issue list --search "\"live canary red on $channel\" in:title" --state open --json number --jq '.[].number' || true); do
+            gh issue comment "$n" --body "Green on $channel $version: $run_url" || true
+            gh issue close "$n" || true
+          done
+
       # Escalate a red run into ONE open issue per channel per harness version:
       # never a daily duplicate, never a silent canary. A skip that failed the
       # assertion above lands here too.
@@ -184,8 +195,17 @@ jobs:
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           existing=$(gh issue list --search "\"$title\" in:title" --state open --json number --jq '.[0].number')
           if [ -z "$existing" ]; then
-            gh issue create --title "$title" \
-              --body "Harness ${{ matrix.channel.label }} ${{ steps.resolve.outputs.version }} breaks the live lanes. CI run: $run_url"
+            # List this channel's older open trackers BEFORE creating, so the
+            # new issue is not its own candidate.
+            stale=$(gh issue list --search "\"live canary red on ${{ matrix.channel.label }}\" in:title" --state open --json number --jq '.[].number' || true)
+            new_url=$(gh issue create --title "$title" \
+              --body "Harness ${{ matrix.channel.label }} ${{ steps.resolve.outputs.version }} breaks the live lanes. CI run: $run_url")
+            # Supersede them: the newest issue carries the live run link, and
+            # || true keeps hygiene from masking the escalation itself.
+            for n in $stale; do
+              gh issue comment "$n" --body "superseded by $new_url" || true
+              gh issue close "$n" || true
+            done
           else
             gh issue comment "$existing" --body "Still red: $run_url"
           fi

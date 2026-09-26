@@ -11,12 +11,13 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { TFn } from './locales.ts'
 import type { CapabilitiesController, CapabilityRowView, CapabilityWriteMode } from './store.ts'
-import { messageOf } from './store.ts'
+import { messageOf, profileOverrides } from './store.ts'
 import type { CapabilityPatch } from './writes.ts'
 import { catalogEditOps, declaredEditOps, hasCapabilityOverride, resetOverrideOps } from './writes.ts'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { formatCapacity } from './capacity.ts'
 import { ModelRow } from './rows.tsx'
+import { writeErrorText } from './editors.tsx'
 
 /** Shared props of one provider card flavor. */
 export interface ProviderCardProps {
@@ -95,11 +96,47 @@ function DeclaredCard(props: ProviderCardProps): ReactElement {
   }, [controller, row.entry.settingsPath])
   // Ownership decided at the join: only a user-owned models[] is editable.
   const rowWritable = writable && row.writeMode === 'declared-models'
+  // Residual sparse overrides: a catalog route whose effective models[] and
+  // leftover user-layer modelOverrides coexist — write validation refuses the
+  // pair (packages/llm/llm-pi-ai/src/catalog.ts:849-850 at dsh-v0.1.7-rc.1),
+  // runtime resolution degrades the route (config.ts:486-489 deferred catch).
+  // All three facts are join fields; no override row exists to clear, so the
+  // one explicit exit lifts the whole dict with the catalog reset's byte-same
+  // unset op (writes.ts:201), a no-op when the dict already lifted.
+  const residual = row.entry.declared === false
+    && row.models.length > 0
+    && Object.keys(row.overrides).length > 0
+  const [clearing, setClearing] = useState(false)
+  const [clearError, setClearError] = useState<string | null>(null)
+  const clearResidual = (): void => {
+    setClearing(true)
+    setClearError(null)
+    void controller.commit(ns =>
+      Object.keys(profileOverrides(ns, row.entry.settingsPath, 'user')).length === 0
+        ? []
+        : [{ op: 'unset', path: [...row.entry.settingsPath, 'modelOverrides'] }])
+      .catch((caught: unknown) => setClearError(writeErrorText(caught, t)))
+      .finally(() => setClearing(false))
+  }
   return (
     <CardShell row={row} t={t}>
       {row.writeMode === 'inherited-models' && (
         <p className="bmp-muted">{t('inheritedModelList')}</p>
       )}
+      {residual && (
+        <div className="bmp-rowActions">
+          <span className="bmp-muted">{t('residualOverrides')}</span>
+          <button
+            type="button"
+            className="bmp-link bmp-danger"
+            disabled={!writable || clearing}
+            onClick={clearResidual}
+          >
+            {clearing ? t('applying') : t('removeResidualOverrides')}
+          </button>
+        </div>
+      )}
+      {clearError !== null && <div className="bmp-error" role="alert">{clearError}</div>}
       <div className="bmp-models">
         {row.models.map((model, index) => {
           const id = typeof model['id'] === 'string' ? model['id'] as string : ''
