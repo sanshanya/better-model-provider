@@ -32,6 +32,8 @@ export declare const en: {
     readonly dormantHint: string;
     readonly officialUserList: "official · user-listed";
     readonly inheritedRoute: "inherited list";
+    readonly residualOverrides: string;
+    readonly removeResidualOverrides: "Remove leftover overrides";
     readonly adapterBoundary: string;
     readonly inheritedModelList: "This model list is inherited from the active composition and is read-only here.";
     readonly readOnly: "Settings are read-only in this view";

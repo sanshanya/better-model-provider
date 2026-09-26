@@ -18,8 +18,8 @@ replaced the deleted tooling, so it is not cited as a fixed number).
   (neither read accepts a signal, so it could never cancel anything).
 - The test surface is now only the two full-chain golden lanes. Eight hermetic
   specs, `tests/helpers.ts` and `tests/manifest.client.spec.ts` are gone
-  (3,385 lines under `tests/`), plus the roster generator and its snapshots
-  (`scripts/roster.mjs`, 223): they asserted against hand-projected fake faces
+  (3,381 lines under `tests/`), plus the roster generator and its snapshots
+  (`scripts/roster.mjs`, 222): they asserted against hand-projected fake faces
   and were green while the same source had 53 real contract errors. The
   inject-row truth they guarded now comes from the served boot graph inside the
   integration lane.
@@ -31,7 +31,8 @@ replaced the deleted tooling, so it is not cited as a fixed number).
   needs peer `~3.18.4`, so a plain direct pin makes `npm ci` fail on ERESOLVE.
 - Artifact 55,689 bytes (0.0.4: 56,642; 0.0.5: 58,462). `src/` 2,681 lines
   (0.0.4: 2,813). Tracked files 39 (0.0.4: 47). Verification tooling 122 lines
-  (was 932) — 2 over the 120 this release aimed for, stated rather than hidden.
+  (was 810); all of `scripts/` 235 (was 932) — 2 over the 120 this release
+  aimed for, stated rather than hidden.
 
 ## [0.0.5] - 2026-09-24
 
