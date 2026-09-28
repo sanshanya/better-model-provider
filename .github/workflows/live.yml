@@ -150,8 +150,13 @@ jobs:
           channel='${{ matrix.channel.label }}'
           fail() { echo "::error::$1"; exit 1; }
 
+          # Runners now hand vitest's colored transcript through tee: ANSI
+          # escapes sit between "Tests" and the count and silently defeat the
+          # `Tests N passed` check (2026-09-26: all three legs went red on a
+          # green lane). Judge the stripped bytes; keep the raw tee for humans.
           for log in live-output.log functional-output.log; do
             [ -f "$log" ] || fail "$channel $version: no transcript at $log — the lane never ran"
+            sed -i 's/\x1b\[[0-9;]*m//g' "$log"
             if grep -Eq 'Tests[[:space:]]+[0-9]+ skipped|Test Files[[:space:]]+[0-9]+ skipped' "$log"; then
               fail "$channel $version: $log reports skipped tests — the canary proved nothing. Skipping is permitted only when the dist-tag is absent from npm."
             fi
