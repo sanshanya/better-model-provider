@@ -170,8 +170,10 @@ jobs:
 
           # The generation proofs PKG-3 prints, per lane: the integration lane
           # parses the served boot graph, the functional lane resolves the
-          # settings document this generation actually writes.
-          if ! grep -Eq "live integration: dsh $version .*graph=[0-9]+ rows .*advertised=http" live-output.log; then
+          # settings document this generation actually writes. The line's tail
+          # token is `served=` — the assert drifted to `advertised=` when the
+          # spec was rewritten (0.0.6) and it has red-flagged green legs since.
+          if ! grep -Eq "live integration: dsh $version .*graph=[0-9]+ rows .*served=http" live-output.log; then
             fail "$channel $version: the integration lane never parsed a boot graph carrying an advertised module URL"
           fi
           if ! grep -Fq "live functional: dsh $version" functional-output.log; then
