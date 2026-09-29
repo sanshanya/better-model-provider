@@ -42,15 +42,16 @@ Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare their capabili
 
 | Harness line | Status |
 |---|---|
+| `dsh 0.2.0-rc.1` (npm `next`) | verified end-to-end |
 | `dsh 0.1.7-alpha.2` (npm `alpha`) | verified end-to-end |
-| `dsh 0.1.7-rc.1` (npm `next`) | verified end-to-end |
-| `dsh 0.1.5-rc.3` (npm `latest`) | verified end-to-end |
+| `dsh 0.1.7-rc.2` (npm `latest`) | verified end-to-end |
+| `dsh 0.1.5-rc.3` | verified end-to-end |
 | `0.1.2-alpha.1` … `0.1.6-alpha.2` | **not verified** — admitted by the peer ranges, no lane has run on them |
 | `0.1.0-rc.7` … `0.1.1-rc.2` | refused: no `connection.api` generation here any more |
 
 Verified means both lanes on a real harness: integration boots a checkout and serves the plugin's client module, functional drives a real browser through a capability write and its revert. They are opt-in — `BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live` (see `CONTRIBUTING.md` for the functional lane) — and skip without it.
 
-The peer ranges are **enumerated per published line** (`>=0.1.2-alpha.1 <0.2.0 || >=0.1.3-alpha.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-alpha.1 <0.2.0 || >=0.1.7-alpha.1 <0.2.0`) rather than one wide `>=0.1.0-rc.7` range, because dsh's admission gate evaluates prereleases with `includePrerelease: true` while npm's peer rule does not: a single wide range reads as unsatisfied to npm on versions dsh accepts. The nightly canary re-proves the `latest`, `next` and `alpha` channels, and a leg whose channel resolved but whose lane skipped fails the run instead of passing quietly; when a leg turns green again it closes that channel's accumulated red-tracking issues itself.
+The peers are a single interval, `>=0.1.2-alpha.1 <0.3.0`: the floor keeps the retired `connection.api` generation out (the `0.1.0-rc.7` line stays refused), the ceiling admits the dsh `0.2` line. What actually rules on them at install time is dsh's admission gate — it reads prereleases with `includePrerelease: true`, and that is the path every install of this plugin takes; npm's own peer rule reads the tuple more strictly and disagrees on some versions, but it never governs that path. (Through 0.0.6 the range was enumerated per published line — a residue of npm's stricter reading; 0.0.7 converged it on dsh's semantics.) The nightly canary re-proves the `latest`, `next` and `alpha` channels, and a leg whose channel resolved but whose lane skipped fails the run instead of passing quietly; when a leg turns green again it closes that channel's accumulated red-tracking issues itself.
 
 Field overlap: this page edits per-model `reasoningEfforts` (levels and their wire spellings) and sparse `modelOverrides` — the official Models page has no control for either. It also edits `input`, `contextWindow` and `maxTokens`, which the official page edits natively, so those are a convenience here rather than a unique capability. Recovery: if the official page rewrote a route's whole model list while overrides saved here linger beside it, write validation rejects the route — the card offers **Remove leftover overrides**, one explicit click, never automatic.
 

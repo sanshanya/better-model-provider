@@ -257,22 +257,91 @@ describe.skipIf(!AVAILABLE)('live harness functional workflow', () => {
     }
   }
 
+  /**
+   * Dismiss first-run shell modals (the 0.2 line's 预览版说明 and kin). Probe
+   * evidence: such a modal is summoned lazily around the first user click —
+   * absent in the frame right before the click, present in the pass after it
+   * — so a single early-empty scan exits straight through the summon lag;
+   * and once it lands, the app tree under it may remount. Poll instead: scan
+   * every 150ms inside a 4s window that RESTARTS on each eat, and exit only
+   * after ≥900ms CONTINUOUS silence, so neither a real eat chain nor a
+   * modal-less page leaves early from the window. Older generations (no
+   * modal, ever) pay one flat 4s per call — bounded, orthogonal to the 60s
+   * budgets. Only visible, dialog-scoped buttons count; each eat is logged
+   * once (button label) so a red transcript shows what was swallowed.
+   */
+  async function dismissFirstRunModals(): Promise<void> {
+    let deadline = Date.now() + 4_000
+    let silentSince = Date.now()
+    while (true) {
+      const eaten: string | null = await page.evaluate((): string | null => {
+        for (const root of document.querySelectorAll('[role=dialog], [aria-modal="true"], dialog, [class*="modal" i]')) {
+          if (root.getBoundingClientRect().width === 0) continue
+          for (const el of root.querySelectorAll('button')) {
+            const text = (el.textContent ?? '').trim()
+            if (!['继续', 'Continue', '稍后配置'].some(needle => text.includes(needle))) continue
+            const rect = el.getBoundingClientRect()
+            if (rect.width === 0 || rect.height === 0) continue
+            ;(el as HTMLElement).click()
+            return text.slice(0, 40)
+          }
+        }
+        return null
+      })
+      if (eaten !== null) {
+        console.log(`live functional: dismissed first-run modal via "${eaten}"`)
+        await new Promise(resolve => setTimeout(resolve, 200))
+        deadline = Date.now() + 4_000
+        silentSince = Date.now()
+        continue
+      }
+      if (Date.now() >= deadline && Date.now() - silentSince >= 900) return
+      await new Promise(resolve => setTimeout(resolve, 150))
+    }
+  }
+
   /** Open our settings section (slot-driven shell; the trigger's aria-haspopup=dialog is the locale-proof handle). */
   async function openSection(): Promise<void> {
     // The settings trigger announces the modal: aria-haspopup=dialog —
-    // the only locale-proof handle the shell gives us.
-    const trigger = await page.evaluate(() => {
+    // the only locale-proof handle the shell gives us. On the 0.2 line a
+    // lazily summoned first-run modal can eat the first trigger click whole
+    // — the settings dialog never opens — so after clearing, the trigger is
+    // clicked AGAIN unconditionally: "eaten, then clicked" and "clicked,
+    // then re-clicked" arrive at the same open dialog. Bounded retries cover
+    // a summon that outlived one dismiss window; attempt 1 passing keeps the
+    // older lines on their original shape.
+    const clickTrigger = (): Promise<boolean> => page.evaluate(() => {
       const el = document.querySelector('button[aria-haspopup="dialog"]')
       if (el instanceof HTMLElement) { el.click(); return true }
       return false
     })
-    if (!trigger) {
-      await scanDom()
-      throw new Error('settings trigger absent: no aria-haspopup=dialog button')
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await dismissFirstRunModals()
+      const trigger = await clickTrigger()
+      if (!trigger) {
+        await scanDom()
+        throw new Error('settings trigger absent: no aria-haspopup=dialog button')
+      }
+      await dismissFirstRunModals()
+      await clickTrigger()
+      // Judge the open by the section's NAV BUTTON — never [role=dialog],
+      // which a lingering preview modal also satisfies.
+      const navReady = await page.waitForFunction(() => {
+        for (const el of document.querySelectorAll('button')) {
+          const text = (el.textContent ?? '').trim()
+          if (!text.includes('模型能力') && !text.includes('Model capabilities')) continue
+          const rect = el.getBoundingClientRect()
+          if (rect.width > 0 && rect.height > 0) return true
+        }
+        return false
+      }, { timeout: 3_000 }).then(() => true, () => false)
+      if (navReady) break
+      if (attempt === 3) {
+        throw new Error('settings dialog never opened after 3 trigger attempts — a first-run modal kept eating the click')
+      }
     }
     // The panel opens on its FIRST nav row; our section only mounts when its
     // nav entry is activated.
-    await page.waitForSelector('[role=dialog]', { visible: true, timeout: 60_000 })
     await clickWithText('button', ['模型能力', 'Model capabilities'])
     await page.waitForSelector('.bmp-section', { visible: true, timeout: 60_000 })
     // A real join against a real harness is NOT instant; the loading state

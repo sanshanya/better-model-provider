@@ -60,6 +60,6 @@ failed gate.
 
 ## Harness compatibility anchors
 
-The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract; the peer ranges are **enumerated per published line**, because one wide range reads as unsatisfied to npm's peer rule while dsh's admission gate (`includePrerelease: true`) accepts it. Verified lines and what is *not* lane-verified: the README compatibility table.
+The wire faces in `src/client/types.ts` are `Pick`s of the published `@deepseek-ai/dsh-api-remotes/client` contract; the peers are the single interval `>=0.1.2-alpha.1 <0.3.0`, whose admission semantics follow dsh's `includePrerelease: true` reading — npm's tuple reading never governs the dsh install path (the per-line enumeration through 0.0.6 was a residue of that reading). Verified lines and what is *not* lane-verified: the README compatibility table.
 
 Weekly Dependabot PRs patrol exactly the declaration owners those peers name — `dsh-api-remotes`, `dsh-client-connection`, `dsh-llm`, `dsh-settings`, `dsh-typert-protocol` — one PR at a time; a bump that breaks the contract fails CI.

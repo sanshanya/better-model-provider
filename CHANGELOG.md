@@ -4,6 +4,45 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); what each release was verified against is the
 README compatibility table.
 
+## [0.0.7] - 2026-09-29
+
+Protocol and metadata release. Everything that moved is declaration or
+verification scope; the client code did not move.
+
+- Admitted: dsh 0.2.x. The five peer branches become one interval,
+  `>=0.1.2-alpha.1 <0.3.0`: the floor stays `0.1.2-alpha.1`, the ceiling
+  opens to `<0.3.0`. Admission is read with dsh's `includePrerelease`
+  semantics — the only gate an install actually passes — so the interval is
+  not claimed npm-tuple-equivalent to the old union, and the headroom over
+  `0.3.0` prereleases is deliberate early admission: the lanes name what
+  they have proven only after the fact, as the README table always records.
+  The five contract devDeps move 0.1.7-rc.1 → 0.2.0-rc.1;
+  `typecheck` and `verify:contract` are green against its declaration face.
+  The 0.2.0-rc.1 verification stands on the local postgate lanes
+  (integration graph=66 rows, inject=6/6; functional 4 passed) — a closed
+  loop independent of the canary assert. Tonight's canary contributed the
+  `latest`-leg transcript instead: the lanes themselves ran green on
+  0.1.7-rc.2 (boot pins, graph=65 rows, inject=6/6, Tests 4 passed), yet the
+  assert step still grepped `advertised=` — the tail spelling the 0.0.6 spec
+  rewrite had left behind — and judged every leg red: the
+  same drift class as the ANSI episode, aligned the same morning (e78022e).
+- Management-page identity: a self-drawn manifest icon (`icon.svg`) and
+  localized title/description (`locale/en.json`, `locale/zh.json`); both ride
+  the master-branch artifact.
+- Leftover sparse overrides get one-click removal (E6′): when the official
+  Models page has rewritten a listed route's `models[]` wholesale, overrides
+  this page saved earlier sit beside it and write validation refuses the
+  route (catalog.ts:849-850); the card's "Remove leftover overrides" lifts
+  the leftover dict — an explicit click, never a silent cleanup.
+- The canary healed itself twice: the runner's colorized transcript puts ANSI
+  escapes inside the `Tests N passed` pattern (the assert step now strips
+  them before judging), and the 0.0.6 spec rewrite moved the graph line's
+  tail token from `advertised=` to `served=` while the assert still grepped
+  the old spelling (aligned). A green leg now also closes that channel's
+  accumulated red-tracking issues.
+- Artifact note: `lib/client.js` is 56,854 bytes (sha256
+  `ab67b15c…c70e67`), byte-identical to 0.0.6's.
+
 ## [0.0.6] - 2026-09-24
 
 Subtraction release. Behaviour is unchanged — the sole full-chain gate is the
