@@ -42,15 +42,16 @@ CI 在 main 每次全绿后自动重建并发布成品到 `master` 分支，此�
 
 | Harness 线 | 状态 |
 |---|---|
+| `dsh 0.2.0-rc.1`（npm `next`） | 端到端验证通过 |
 | `dsh 0.1.7-alpha.2`（npm `alpha`） | 端到端验证通过 |
-| `dsh 0.1.7-rc.1`（npm `next`） | 端到端验证通过 |
-| `dsh 0.1.5-rc.3`（npm `latest`） | 端到端验证通过 |
+| `dsh 0.1.7-rc.2`（npm `latest`） | 端到端验证通过 |
+| `dsh 0.1.5-rc.3` | 端到端验证通过 |
 | `0.1.2-alpha.1` … `0.1.6-alpha.2` | **未验证**：peer 范围接纳，但没有跑过车道 |
 | `0.1.0-rc.7` … `0.1.1-rc.2` | 拒绝：本页已不再支持 `connection.api` 那一代 |
 
 「验证通过」指两条车道都在真实 harness 上跑过：integration 启动本地检出并确认插件客户端模块确实被服务；functional 用真实浏览器完成一次能力写入与还原。两条车道都是可选项——`BMP_DSH_DIR=/path/to/deepseek-harness npm run test:live`（functional 见 `CONTRIBUTING.md`）——未设置时自动跳过。
 
-peer 范围**按已发布线逐条枚举**（`>=0.1.2-alpha.1 <0.2.0 || >=0.1.3-alpha.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-alpha.1 <0.2.0 || >=0.1.7-alpha.1 <0.2.0`），而不是一个宽泛的 `>=0.1.0-rc.7`：dsh 的准入判定用 `includePrerelease: true` 读预发布，npm 的 peer 规则则不然——一个宽范围会让 npm 在 dsh 接受的版本上报不满足。每日金丝雀复验 `latest`、`next`、`alpha` 三个频道；频道解析成功而车道跳过的那条腿会判失败，而不是悄悄放行；重新转绿的腿会自行关掉该频道积存的红色追踪 issue。
+peer 范围收敛为单一区间 `>=0.1.2-alpha.1 <0.3.0`：地板把已退役的 `connection.api` 一代挡在门外（`0.1.0-rc.7` 线仍被拒），天花板放行 dsh `0.2` 线。安装时真正裁决这些 peer 的是 dsh 的准入闸——它以 `includePrerelease: true` 读预发布，而本插件的每次安装都走这条路；npm 自己的 peer 规则按更严格的 tuple 读法，对部分版本会得出相反的结论，但它不管辖这条安装路径。（0.0.6 及更早按已发布线逐条枚举分支——那是 npm 严格读法的历史残留；0.0.7 起按 dsh 语义收敛为一条。）每日金丝雀复验 `latest`、`next`、`alpha` 三个频道；频道解析成功而车道跳过的那条腿会判失败，而不是悄悄放行；重新转绿的腿会自行关掉该频道积存的红色追踪 issue。
 
 字段重叠：本页可编辑按模型的 `reasoningEfforts`（档位及其取值拼写）与稀疏 `modelOverrides`——官方「模型」页两者都没有入口。它也能改 `input`、`contextWindow`、`maxTokens`，但这些官方页本来就能改，所以在本页只是顺手，而非独有能力。恢复：若路由的模型列表被官方页整组重写、而本页保存的覆盖残留在旁，写入校验即判该路由非法——卡片上的「移除残留覆盖」一键清除，且只有显式点击才生效。
 
