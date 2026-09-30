@@ -4,6 +4,8 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -87,3 +89,34 @@ jobs:
           fi
           git commit -m "chore: 发布构建产物 (${{ github.sha }})"
           git push origin staging:master
+
+  publish-npm:
+    # A published GitHub release ships the same tarball scope to the npm
+    # registry; idempotent — a version already on the registry is skipped.
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run verify:contract
+      - run: npm run build
+      - run: npm run verify:pack
+      - name: publish to npm if the version is new
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "better-model-provider@$V" version >/dev/null 2>&1; then
+            echo "$V already on the registry, skipping"
+          else
+            npm publish --provenance
+          fi
