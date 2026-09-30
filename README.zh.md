@@ -16,9 +16,9 @@
 
 ## 安装
 
-    dsh plugin --profile web add github:sanshanya/better-model-provider#master
+    dsh plugin --profile web add better-model-provider
 
-CI 在 main 每次全绿后自动重建并发布成品到 `master` 分支，此路径零本机构建。装默认分支（`github:sanshanya/better-model-provider`）则本地构建：按提示为 pnpm 增加一个 `allowBuilds` 键后重跑 `add`；本地 `link:` 安装须先 `npm install && npm run build`。重启 `dsh web`，设置侧栏即现「模型能力」。
+npm 包自带构建产物，此路径零本机构建。备选：`github:sanshanya/better-model-provider#master`（CI 在 main 每次全绿后向 `master` 分支重建并发布成品）；裸默认分支（`github:sanshanya/better-model-provider`）本地构建：按提示为 pnpm 增加一个 `allowBuilds` 键后重跑 `add`；本地 `link:` 安装须先 `npm install && npm run build`。重启 `dsh web`，设置侧栏即现「模型能力」。
 
     dsh plugin --profile web rm better-model-provider
 

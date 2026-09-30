@@ -7,7 +7,9 @@ README compatibility table.
 ## [0.0.7] - 2026-09-29
 
 Protocol and metadata release. Everything that moved is declaration or
-verification scope; the client code did not move.
+verification scope; the client code did not move. First release also
+distributed on the npm registry (`better-model-provider`), alongside the
+`#master` git path.
 
 - Admitted: dsh 0.2.x. The five peer branches become one interval,
   `>=0.1.2-alpha.1 <0.3.0`: the floor stays `0.1.2-alpha.1`, the ceiling

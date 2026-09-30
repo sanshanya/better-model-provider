@@ -16,9 +16,9 @@ This page is the other seam. On an official-catalog route it writes only the dif
 
 ## Install
 
-    dsh plugin --profile web add github:sanshanya/better-model-provider#master
+    dsh plugin --profile web add better-model-provider
 
-CI rebuilds and republishes ready-built artifacts to the `master` branch on every green main push, so this path never builds locally. Installing the default branch (`github:sanshanya/better-model-provider`) builds from source and prints one pnpm `allowBuilds` key to add, then rerun `add`; a local `link:` install must `npm install && npm run build` first. Restart `dsh web`, and the Settings sidebar gains **Model capabilities**.
+The npm package ships ready-built, so this path never builds locally. Alternates: `github:sanshanya/better-model-provider#master` (CI republishes ready-built artifacts to the `master` branch on every green main push), or the default branch (`github:sanshanya/better-model-provider`), which builds from source and prints one pnpm `allowBuilds` key to add, then rerun `add`; a local `link:` install must `npm install && npm run build` first. Restart `dsh web`, and the Settings sidebar gains **Model capabilities**.
 
     dsh plugin --profile web rm better-model-provider
 
