@@ -42,9 +42,9 @@ npm 包自带构建产物，此路径零本机构建。备选：`github:sanshany
 
 | Harness 线 | 状态 |
 |---|---|
-| `dsh 0.2.0-rc.1`（npm `next`） | 端到端验证通过 |
-| `dsh 0.1.7-alpha.2`（npm `alpha`） | 端到端验证通过 |
-| `dsh 0.1.7-rc.2`（npm `latest`） | 端到端验证通过 |
+| `dsh 0.2.0-rc.2`（npm `latest` / `next`） | 端到端验证通过 |
+| `dsh 0.2.1-alpha.1` | 端到端验证通过 |
+| `dsh 0.1.7-rc.2` | 端到端验证通过 |
 | `dsh 0.1.5-rc.3` | 端到端验证通过 |
 | `0.1.2-alpha.1` … `0.1.6-alpha.2` | **未验证**：peer 范围接纳，但没有跑过车道 |
 | `0.1.0-rc.7` … `0.1.1-rc.2` | 拒绝：本页已不再支持 `connection.api` 那一代 |

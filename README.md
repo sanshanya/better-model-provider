@@ -42,9 +42,9 @@ Dedicated-adapter apps (built-in DeepSeek / OpenAI Codex) declare their capabili
 
 | Harness line | Status |
 |---|---|
-| `dsh 0.2.0-rc.1` (npm `next`) | verified end-to-end |
-| `dsh 0.1.7-alpha.2` (npm `alpha`) | verified end-to-end |
-| `dsh 0.1.7-rc.2` (npm `latest`) | verified end-to-end |
+| `dsh 0.2.0-rc.2` (npm `latest` / `next`) | verified end-to-end |
+| `dsh 0.2.1-alpha.1` | verified end-to-end |
+| `dsh 0.1.7-rc.2` | verified end-to-end |
 | `dsh 0.1.5-rc.3` | verified end-to-end |
 | `0.1.2-alpha.1` … `0.1.6-alpha.2` | **not verified** — admitted by the peer ranges, no lane has run on them |
 | `0.1.0-rc.7` … `0.1.1-rc.2` | refused: no `connection.api` generation here any more |
