@@ -4,6 +4,29 @@ Notable changes to better-model-provider. Versions track the published git
 tags (npm artifact when it ships); what each release was verified against is the
 README compatibility table.
 
+## [0.0.8] - 2026-10-09
+
+Distribution release. The substantive motive is the registry page: the npm
+listing needs correct install instructions, and 0.0.7's tarball still carried
+the `#master`-era text.
+
+- The install first line is now the registry: `dsh plugin --profile web add
+  better-model-provider`; the `#master` artifact branch and the bare
+  default-branch address demote to alternates. The npm page's own README
+  refreshes with this release.
+- Contract surface follows upstream: the five declaration devDeps move
+  0.2.0-rc.1 → 0.2.0-rc.2 atomically — the five inter-pin each other on
+  exact-version peers, so npm's ERESOLVE against a single-package bump is
+  structural, not a chore backlog; `typecheck` and `verify:contract` are
+  green against the rc.2 declaration face, and the nightly canary stayed
+  green on all three channels across 2026-10-03…10-09 (nightly transcripts).
+- Dependabot now patrols the `@deepseek-ai/dsh-*` owners as ONE group: a
+  single-package PR of the #30 shape (one owner jumping a line its
+  inter-peers cannot follow) is structurally impossible.
+- Artifact note: `lib/client.js` is again 56,854 bytes (sha256
+  `ab67b15c…c70e67`), byte-identical to 0.0.6's and 0.0.7's — declaration
+  and metadata moved; client code did not.
+
 ## [0.0.7] - 2026-09-29
 
 Protocol and metadata release. Everything that moved is declaration or

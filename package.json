@@ -1,6 +1,6 @@
 {
   "name": "better-model-provider",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Per-model reasoning efforts and input modalities for DeepSeek Harness — one settings section, no YAML.",
   "icon": "./icon.svg",
   "license": "MIT",
