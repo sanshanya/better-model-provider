@@ -75,11 +75,11 @@
     "prepack": "npm run build"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-api-remotes": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-settings": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.1",
+    "@deepseek-ai/dsh-api-remotes": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
     "@types/node": "^26.2.0",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",

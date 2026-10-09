@@ -21,5 +21,11 @@ updates:
       - dependency-name: '@deepseek-ai/dsh-settings'
       - dependency-name: '@deepseek-ai/dsh-typert-protocol'
     # One PR for the whole patrol: the owners move together on a harness line,
-    # and one reviewable bump is the point of the exercise.
+    # and a single-package bump cannot even resolve (their inter-peers pin the
+    # same release — see dsh-scope@0.2.0-rc.1 blocking #30). groups: is the
+    # mechanism that delivers the atomic bump the comment above promises.
+    groups:
+      dsh-contract:
+        patterns:
+          - '@deepseek-ai/dsh-*'
     open-pull-requests-limit: 1
